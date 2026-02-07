@@ -12,6 +12,8 @@
       "label.cols": "Columns (width)",
       "label.ratio": "Target source ratio",
       "label.preview": "Preview",
+      "label.debug": "Debug",
+      "action.copyDebug": "Copy",
       "help.cellClick": "Click a cell below: the selected timeline video clip will be placed automatically.",
       "summary.format": "{rows} x {cols} | ratio {ratio}",
       "cell.label": "{row},{col}",
@@ -34,8 +36,10 @@
       "status.err.crop_effect_unavailable": "Crop effect unavailable or failed to add.",
       "status.err.exception": "Unexpected error: {message}",
       "status.err.empty_response": "No response returned by host script.",
+      "status.err.copy_failed": "Failed to copy debug log.",
       "status.err.unknown": "Unknown error.",
       "status.ok.generic": "Done.",
+      "status.ok.debug_copied": "Debug log copied to clipboard.",
       "status.info.host": "Host: {message}"
     }
   });

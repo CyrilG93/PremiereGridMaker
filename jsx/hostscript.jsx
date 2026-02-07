@@ -1,11 +1,20 @@
 function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
+    var debugLines = [];
+    function dbg(message) {
+        _gridMaker_debugPush(debugLines, message);
+    }
+
     try {
+        dbg("INPUT row=" + row + " col=" + col + " rows=" + rows + " cols=" + cols + " ratio=" + ratioW + ":" + ratioH);
         app.enableQE();
+        dbg("QE enabled");
 
         var seq = app.project.activeSequence;
         if (!seq) {
-            return _gridMaker_result("ERR", "no_active_sequence");
+            dbg("No active sequence");
+            return _gridMaker_result("ERR", "no_active_sequence", null, debugLines);
         }
+        dbg("Sequence name=" + (seq.name || "<unknown>"));
 
         row = parseInt(row, 10);
         col = parseInt(col, 10);
@@ -13,21 +22,27 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
         cols = parseInt(cols, 10);
         ratioW = parseFloat(ratioW);
         ratioH = parseFloat(ratioH);
+        dbg("PARSED row=" + row + " col=" + col + " rows=" + rows + " cols=" + cols + " ratio=" + ratioW + ":" + ratioH);
 
         if (rows < 1 || cols < 1) {
-            return _gridMaker_result("ERR", "invalid_grid");
+            dbg("Invalid grid");
+            return _gridMaker_result("ERR", "invalid_grid", null, debugLines);
         }
         if (row < 0 || col < 0 || row >= rows || col >= cols) {
-            return _gridMaker_result("ERR", "cell_out_of_bounds");
+            dbg("Cell out of bounds");
+            return _gridMaker_result("ERR", "cell_out_of_bounds", null, debugLines);
         }
         if (!(ratioW > 0) || !(ratioH > 0)) {
-            return _gridMaker_result("ERR", "invalid_ratio");
+            dbg("Invalid ratio");
+            return _gridMaker_result("ERR", "invalid_ratio", null, debugLines);
         }
 
         var selection = seq.getSelection();
         if (!selection || selection.length < 1) {
-            return _gridMaker_result("ERR", "no_selection");
+            dbg("No timeline selection");
+            return _gridMaker_result("ERR", "no_selection", null, debugLines);
         }
+        dbg("Selection length=" + selection.length);
 
         var clip = null;
         for (var i = 0; i < selection.length; i++) {
@@ -37,50 +52,63 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
             }
         }
         if (!clip) {
-            return _gridMaker_result("ERR", "no_video_selected");
+            dbg("No selected video clip found in selection");
+            return _gridMaker_result("ERR", "no_video_selected", null, debugLines);
         }
+        dbg("Clip name=" + _gridMaker_clipName(clip) + " start=" + _gridMaker_timeToSeconds(clip.start) + " end=" + _gridMaker_timeToSeconds(clip.end));
 
         var transformComp = _gridMaker_findTransformComponent(clip);
         var motionComp = _gridMaker_findMotionComponent(clip);
         var placementComp = motionComp || transformComp;
         var cropComp = _gridMaker_findCropComponent(clip);
+        dbg("Components pre-check placement=" + _gridMaker_componentLabel(placementComp) + " transform=" + _gridMaker_componentLabel(transformComp) + " motion=" + _gridMaker_componentLabel(motionComp) + " crop=" + _gridMaker_componentLabel(cropComp));
 
         var qSeq = null;
         if (!placementComp || !cropComp) {
             qSeq = qe.project.getActiveSequence();
             if (!qSeq) {
-                return _gridMaker_result("ERR", "qe_unavailable");
+                dbg("QE sequence unavailable");
+                return _gridMaker_result("ERR", "qe_unavailable", null, debugLines);
             }
+            dbg("QE sequence acquired");
 
             var qClip = _gridMaker_findQEClip(qSeq, seq, clip);
             if (!qClip) {
-                return _gridMaker_result("ERR", "qe_clip_not_found");
+                dbg("QE clip not found");
+                return _gridMaker_result("ERR", "qe_clip_not_found", null, debugLines);
             }
+            dbg("QE clip found");
 
             if (!placementComp) {
                 transformComp = _gridMaker_ensureEffect(clip, qClip, _gridMaker_transformEffectLookupNames(), _gridMaker_findTransformComponent);
                 motionComp = _gridMaker_findMotionComponent(clip);
                 placementComp = motionComp || transformComp;
+                dbg("Placement component after ensure=" + _gridMaker_componentLabel(placementComp));
             }
             if (!cropComp) {
                 cropComp = _gridMaker_ensureEffect(clip, qClip, _gridMaker_cropEffectLookupNames(), _gridMaker_findCropComponent);
+                dbg("Crop component after ensure=" + _gridMaker_componentLabel(cropComp));
             }
         }
 
         if (!placementComp) {
-            return _gridMaker_result("ERR", "transform_effect_unavailable");
+            dbg("Placement component unavailable");
+            return _gridMaker_result("ERR", "transform_effect_unavailable", null, debugLines);
         }
         if (!cropComp) {
-            return _gridMaker_result("ERR", "crop_effect_unavailable");
+            dbg("Crop component unavailable");
+            return _gridMaker_result("ERR", "crop_effect_unavailable", null, debugLines);
         }
 
         var frameSize = _gridMaker_getSequenceFrameSize(seq, qSeq);
         if (!frameSize || !_gridMaker_isFiniteNumber(frameSize.width) || !_gridMaker_isFiniteNumber(frameSize.height) || !(frameSize.width > 0) || !(frameSize.height > 0)) {
-            return _gridMaker_result("ERR", "invalid_sequence_size");
+            dbg("Invalid sequence frame size");
+            return _gridMaker_result("ERR", "invalid_sequence_size", null, debugLines);
         }
         var frameW = frameSize.width;
         var frameH = frameSize.height;
         var frameAspect = frameW / frameH;
+        dbg("Frame size " + frameW + "x" + frameH + " aspect=" + frameAspect);
 
         var cropL = 0.0;
         var cropR = 0.0;
@@ -134,22 +162,29 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
 
         var x = frameW * ((col + 0.5) / cols);
         var y = frameH * ((row + 0.5) / rows);
+        dbg("Computed crop LRTB=" + cropL.toFixed(3) + "," + cropR.toFixed(3) + "," + cropT.toFixed(3) + "," + cropB.toFixed(3));
+        dbg("Computed baseScale=" + baseScale.toFixed(3) + " scale=" + scale.toFixed(3) + " x=" + x.toFixed(3) + " y=" + y.toFixed(3));
 
-        if (!_gridMaker_setPlacement(placementComp, scale, x, y, frameW, frameH)) {
+        if (!_gridMaker_setPlacement(placementComp, scale, x, y, frameW, frameH, debugLines)) {
+            dbg("Placement write failed");
             return _gridMaker_result("ERR", "placement_apply_failed", {
                 x: x.toFixed(3),
                 y: y.toFixed(3)
-            });
+            }, debugLines);
         }
         _gridMaker_setCrop(cropComp, cropL, cropR, cropT, cropB);
+        dbg("Placement write succeeded");
+        dbg("Readback scale=" + _gridMaker_getCurrentScalePercent(placementComp));
+        dbg("Readback position=" + _gridMaker_pointToString(_gridMaker_getCurrentPosition(placementComp)));
 
         return _gridMaker_result("OK", "cell_applied", {
             row: row + 1,
             col: col + 1,
             scale: scale.toFixed(2)
-        });
+        }, debugLines);
     } catch (e) {
-        return _gridMaker_result("ERR", "exception", { message: e });
+        dbg("EXCEPTION " + e);
+        return _gridMaker_result("ERR", "exception", { message: e }, debugLines);
     }
 }
 
@@ -561,8 +596,9 @@ function _gridMaker_disableTimeVarying(prop) {
     } catch (e1) {}
 }
 
-function _gridMaker_trySetNumberProperty(prop, value) {
+function _gridMaker_trySetNumberProperty(prop, value, debugLines, label) {
     if (!prop || !_gridMaker_isFiniteNumber(value)) {
+        _gridMaker_debugPush(debugLines, "set-number skip " + (label || "?") + " invalid prop/value");
         return false;
     }
 
@@ -570,6 +606,7 @@ function _gridMaker_trySetNumberProperty(prop, value) {
         prop.setValue(value, true);
         var readback = _gridMaker_readPropertyValue(prop);
         if (_gridMaker_isFiniteNumber(readback)) {
+            _gridMaker_debugPush(debugLines, "set-number ok " + (label || "?") + " value=" + value + " readback=" + readback);
             return true;
         }
     } catch (e1) {}
@@ -579,20 +616,25 @@ function _gridMaker_trySetNumberProperty(prop, value) {
     try {
         prop.setValue(value, true);
         var readback2 = _gridMaker_readPropertyValue(prop);
-        return _gridMaker_isFiniteNumber(readback2);
+        var ok = _gridMaker_isFiniteNumber(readback2);
+        _gridMaker_debugPush(debugLines, "set-number retry " + (label || "?") + " value=" + value + " readback=" + readback2 + " ok=" + ok);
+        return ok;
     } catch (e2) {}
 
+    _gridMaker_debugPush(debugLines, "set-number failed " + (label || "?"));
     return false;
 }
 
-function _gridMaker_trySetPointProperty(prop, point) {
+function _gridMaker_trySetPointProperty(prop, point, debugLines, label) {
     if (!prop || !point || point.length < 2) {
+        _gridMaker_debugPush(debugLines, "set-point skip " + (label || "?") + " invalid prop/value");
         return false;
     }
 
     var x = parseFloat(point[0]);
     var y = parseFloat(point[1]);
     if (!_gridMaker_isFiniteNumber(x) || !_gridMaker_isFiniteNumber(y)) {
+        _gridMaker_debugPush(debugLines, "set-point skip " + (label || "?") + " non-finite point");
         return false;
     }
 
@@ -600,6 +642,7 @@ function _gridMaker_trySetPointProperty(prop, point) {
         prop.setValue([x, y], true);
         var readback = _gridMaker_readPropertyValue(prop);
         if (_gridMaker_isPointValue(readback)) {
+            _gridMaker_debugPush(debugLines, "set-point ok " + (label || "?") + " value=[" + x + "," + y + "] readback=" + _gridMaker_pointToString(readback));
             return true;
         }
     } catch (e1) {}
@@ -609,9 +652,12 @@ function _gridMaker_trySetPointProperty(prop, point) {
     try {
         prop.setValue([x, y], true);
         var readback2 = _gridMaker_readPropertyValue(prop);
-        return _gridMaker_isPointValue(readback2);
+        var ok = _gridMaker_isPointValue(readback2);
+        _gridMaker_debugPush(debugLines, "set-point retry " + (label || "?") + " value=[" + x + "," + y + "] readback=" + _gridMaker_pointToString(readback2) + " ok=" + ok);
+        return ok;
     } catch (e2) {}
 
+    _gridMaker_debugPush(debugLines, "set-point failed " + (label || "?"));
     return false;
 }
 
@@ -639,12 +685,13 @@ function _gridMaker_getCurrentScalePercent(component) {
     return NaN;
 }
 
-function _gridMaker_setPlacement(component, scale, x, y, frameW, frameH) {
+function _gridMaker_setPlacement(component, scale, x, y, frameW, frameH, debugLines) {
     var kind = _gridMaker_componentKind(component);
+    _gridMaker_debugPush(debugLines, "Placement component=" + _gridMaker_componentLabel(component) + " kind=" + kind);
 
     var uniform = _gridMaker_findProperty(component, ["uniform scale", "echelle uniforme", "uniform"]);
     if (uniform) {
-        _gridMaker_trySetNumberProperty(uniform, 1);
+        _gridMaker_trySetNumberProperty(uniform, 1, debugLines, "uniform");
     }
 
     var scaleProp = _gridMaker_findProperty(component, [
@@ -656,7 +703,8 @@ function _gridMaker_setPlacement(component, scale, x, y, frameW, frameH) {
         "adbe scale",
         "adbe motion scale"
     ], "number");
-    var scaleOk = _gridMaker_trySetNumberProperty(scaleProp, scale);
+    _gridMaker_debugPush(debugLines, "Scale property=" + _gridMaker_propertyLabel(scaleProp) + " target=" + scale);
+    var scaleOk = _gridMaker_trySetNumberProperty(scaleProp, scale, debugLines, "scale");
 
     var position = _gridMaker_findProperty(component, [
         "position",
@@ -665,28 +713,34 @@ function _gridMaker_setPlacement(component, scale, x, y, frameW, frameH) {
         "adbe motion position"
     ], "point2d");
     if (!position) {
+        _gridMaker_debugPush(debugLines, "No 2D position property found");
         return false;
     }
+    _gridMaker_debugPush(debugLines, "Position property=" + _gridMaker_propertyLabel(position) + " targetAbs=[" + x + "," + y + "]");
 
     var candidates = _gridMaker_buildPositionCandidates(kind, x, y, frameW, frameH);
     var positionOk = false;
     for (var i = 0; i < candidates.length; i++) {
-        if (_gridMaker_trySetPointProperty(position, candidates[i])) {
+        _gridMaker_debugPush(debugLines, "Position candidate #" + (i + 1) + "=" + _gridMaker_pointToString(candidates[i]));
+        if (_gridMaker_trySetPointProperty(position, candidates[i], debugLines, "position#" + (i + 1))) {
             var readback = _gridMaker_readPropertyValue(position);
             if (_gridMaker_isPointValue(readback)) {
                 var rx = parseFloat(readback[0]);
                 var ry = parseFloat(readback[1]);
                 if (_gridMaker_isFiniteNumber(rx) && _gridMaker_isFiniteNumber(ry) && Math.abs(rx) < 100000 && Math.abs(ry) < 100000) {
+                    _gridMaker_debugPush(debugLines, "Position accepted readback=" + _gridMaker_pointToString(readback));
                     positionOk = true;
                     break;
                 }
             } else {
+                _gridMaker_debugPush(debugLines, "Position accepted without readable point value");
                 positionOk = true;
                 break;
             }
         }
     }
 
+    _gridMaker_debugPush(debugLines, "Placement result scaleOk=" + scaleOk + " positionOk=" + positionOk);
     return !!scaleOk && !!positionOk;
 }
 
@@ -727,6 +781,66 @@ function _gridMaker_componentKind(component) {
     }
 
     return "unknown";
+}
+
+function _gridMaker_componentLabel(component) {
+    if (!component) {
+        return "<none>";
+    }
+
+    var displayName = "";
+    var matchName = "";
+    try {
+        displayName = component.displayName || "";
+    } catch (e1) {}
+    try {
+        matchName = component.matchName || "";
+    } catch (e2) {}
+
+    return "[" + displayName + "|" + matchName + "]";
+}
+
+function _gridMaker_propertyLabel(prop) {
+    if (!prop) {
+        return "<none>";
+    }
+
+    var displayName = "";
+    var matchName = "";
+    try {
+        displayName = prop.displayName || "";
+    } catch (e1) {}
+    try {
+        matchName = prop.matchName || "";
+    } catch (e2) {}
+    return "[" + displayName + "|" + matchName + "]";
+}
+
+function _gridMaker_getCurrentPosition(component) {
+    var position = _gridMaker_findProperty(component, [
+        "position",
+        "adbe transform position",
+        "adbe position",
+        "adbe motion position"
+    ], "point2d");
+    if (!position) {
+        return null;
+    }
+    return _gridMaker_readPropertyValue(position);
+}
+
+function _gridMaker_pointToString(point) {
+    if (!_gridMaker_isPointValue(point)) {
+        return "<invalid>";
+    }
+    return "[" + parseFloat(point[0]) + "," + parseFloat(point[1]) + "]";
+}
+
+function _gridMaker_debugPush(debugLines, message) {
+    if (!debugLines) {
+        return;
+    }
+    debugLines.push(String(message));
 }
 
 function _gridMaker_getSequenceFrameSize(seq, qSeq) {
@@ -857,9 +971,27 @@ function _gridMaker_clamp(v, min, max) {
     return v;
 }
 
-function _gridMaker_result(status, code, details) {
+function _gridMaker_result(status, code, details, debugLines) {
     var payload = status + "|" + code;
-    var detailString = _gridMaker_serializeDetails(details);
+    var mergedDetails = {};
+    var hasDetail = false;
+
+    if (details) {
+        for (var key in details) {
+            if (!details.hasOwnProperty(key)) {
+                continue;
+            }
+            mergedDetails[key] = details[key];
+            hasDetail = true;
+        }
+    }
+
+    if (debugLines && debugLines.length > 0) {
+        mergedDetails.debug = debugLines.join("\n");
+        hasDetail = true;
+    }
+
+    var detailString = _gridMaker_serializeDetails(hasDetail ? mergedDetails : null);
     if (detailString) {
         payload += "|" + detailString;
     }

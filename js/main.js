@@ -30,6 +30,39 @@
   var grid = document.getElementById("gridPreview");
   var status = document.getElementById("status");
   var languageSelect = document.getElementById("languageSelect");
+  var copyDebugBtn = document.getElementById("copyDebugBtn");
+  var debugLog = document.getElementById("debugLog");
+
+  function getClockStamp() {
+    var now = new Date();
+    var hh = String(now.getHours()).padStart(2, "0");
+    var mm = String(now.getMinutes()).padStart(2, "0");
+    var ss = String(now.getSeconds()).padStart(2, "0");
+    return hh + ":" + mm + ":" + ss;
+  }
+
+  function appendDebug(message) {
+    if (!debugLog) {
+      return;
+    }
+    debugLog.value += "[" + getClockStamp() + "] " + String(message) + "\n";
+    if (debugLog.value.length > 60000) {
+      debugLog.value = debugLog.value.slice(debugLog.value.length - 60000);
+    }
+    debugLog.scrollTop = debugLog.scrollHeight;
+  }
+
+  function appendHostDebug(rawDebugText) {
+    if (!rawDebugText) {
+      return;
+    }
+    var lines = String(rawDebugText).split(/\r?\n/);
+    for (var i = 0; i < lines.length; i += 1) {
+      if (lines[i]) {
+        appendDebug("HOST> " + lines[i]);
+      }
+    }
+  }
 
   function resolveInitialLocale() {
     var fallback = i18n.defaultLocale || "en";
@@ -225,7 +258,7 @@
 
   function parseHostResponse(result) {
     if (!result) {
-      return { kind: "err", key: "status.err.empty_response", vars: {} };
+      return { kind: "err", key: "status.err.empty_response", vars: {}, hostDebug: "" };
     }
 
     var parts = result.split("|");
@@ -233,6 +266,7 @@
       var statusCode = parts[0];
       var code = parts[1];
       var details = parseHostDetails(parts.slice(2).join("|"));
+      var hostDebug = details.debug || "";
 
       if (statusCode === "OK") {
         if (code === "cell_applied") {
@@ -243,36 +277,39 @@
               row: details.row || "",
               col: details.col || "",
               scale: details.scale || ""
-            }
+            },
+            hostDebug: hostDebug
           };
         }
-        return { kind: "ok", key: "status.ok.generic", vars: {} };
+        return { kind: "ok", key: "status.ok.generic", vars: {}, hostDebug: hostDebug };
       }
 
       if (code === "exception") {
         return {
           kind: "err",
           key: "status.err.exception",
-          vars: { message: details.message || "" }
+          vars: { message: details.message || "" },
+          hostDebug: hostDebug
         };
       }
 
       return {
         kind: "err",
         key: hasText("status.err." + code) ? ("status.err." + code) : "status.err.unknown",
-        vars: details
+        vars: details,
+        hostDebug: hostDebug
       };
     }
 
     if (result.indexOf("ERROR:") === 0) {
-      return { kind: "err", raw: result };
+      return { kind: "err", raw: result, hostDebug: "" };
     }
 
     if (result.indexOf("OK:") === 0) {
-      return { kind: "ok", raw: result };
+      return { kind: "ok", raw: result, hostDebug: "" };
     }
 
-    return { kind: "", raw: result };
+    return { kind: "", raw: result, hostDebug: "" };
   }
 
   function applyCell(row, col) {
@@ -288,10 +325,14 @@
       state.ratioH +
       ")";
 
+    appendDebug("UI> click cell row=" + (row + 1) + " col=" + (col + 1) + " grid=" + state.rows + "x" + state.cols + " ratio=" + state.ratioW + ":" + state.ratioH);
+    appendDebug("UI> evalScript: " + script);
     setStatusKey("status.applying", {}, "");
 
     callHost(script, function (result) {
+      appendDebug("HOST< raw: " + (result || "<empty>"));
       var parsed = parseHostResponse(result);
+      appendHostDebug(parsed.hostDebug);
 
       if (parsed.raw) {
         setStatusRaw(parsed.raw, parsed.kind);
@@ -407,10 +448,70 @@
   });
 
   languageSelect.addEventListener("change", function () {
+    appendDebug("UI> locale changed to " + languageSelect.value);
     setLocale(languageSelect.value);
+  });
+
+  ratio.addEventListener("change", function () {
+    appendDebug("UI> ratio changed to " + ratio.value);
+  });
+
+  rowsNumber.addEventListener("change", function () {
+    appendDebug("UI> rows changed to " + rowsNumber.value);
+  });
+
+  colsNumber.addEventListener("change", function () {
+    appendDebug("UI> cols changed to " + colsNumber.value);
+  });
+
+  copyDebugBtn.addEventListener("click", function () {
+    var text = debugLog ? debugLog.value : "";
+    if (!text) {
+      appendDebug("UI> copy debug requested (log empty)");
+      setStatusKey("status.ok.debug_copied", {}, "ok");
+      return;
+    }
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () {
+        appendDebug("UI> debug copied to clipboard");
+        setStatusKey("status.ok.debug_copied", {}, "ok");
+      }).catch(function (err) {
+        appendDebug("UI> clipboard API failed: " + err);
+        try {
+          debugLog.focus();
+          debugLog.select();
+          var ok = document.execCommand("copy");
+          if (ok) {
+            appendDebug("UI> debug copied via execCommand");
+            setStatusKey("status.ok.debug_copied", {}, "ok");
+          } else {
+            setStatusKey("status.err.copy_failed", {}, "err");
+          }
+        } catch (e1) {
+          setStatusKey("status.err.copy_failed", {}, "err");
+        }
+      });
+      return;
+    }
+
+    try {
+      debugLog.focus();
+      debugLog.select();
+      var copied = document.execCommand("copy");
+      if (copied) {
+        appendDebug("UI> debug copied via legacy clipboard");
+        setStatusKey("status.ok.debug_copied", {}, "ok");
+      } else {
+        setStatusKey("status.err.copy_failed", {}, "err");
+      }
+    } catch (e2) {
+      setStatusKey("status.err.copy_failed", {}, "err");
+    }
   });
 
   renderLanguageOptions();
   setLocale(state.locale);
   setStatusKey("status.ready", {}, "");
+  appendDebug("INIT> panel ready");
 })();

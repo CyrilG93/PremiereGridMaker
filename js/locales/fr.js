@@ -12,6 +12,8 @@
       "label.cols": "Colonnes (largeur)",
       "label.ratio": "Ratio cible de la source",
       "label.preview": "Apercu",
+      "label.debug": "Debug",
+      "action.copyDebug": "Copier",
       "help.cellClick": "Clique une cellule: le clip video selectionne dans la timeline sera place automatiquement.",
       "summary.format": "{rows} x {cols} | ratio {ratio}",
       "cell.label": "{row},{col}",
@@ -34,8 +36,10 @@
       "status.err.crop_effect_unavailable": "Effet Crop indisponible ou ajout echoue.",
       "status.err.exception": "Erreur inattendue: {message}",
       "status.err.empty_response": "Aucune reponse du script hote.",
+      "status.err.copy_failed": "Impossible de copier le log debug.",
       "status.err.unknown": "Erreur inconnue.",
       "status.ok.generic": "Termine.",
+      "status.ok.debug_copied": "Log debug copie dans le presse-papiers.",
       "status.info.host": "Hote: {message}"
     }
   });
