@@ -71,7 +71,7 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
         _gridMaker_dumpPlacementComponents(clip, debugLines, "BEFORE");
 
         var qSeq = null;
-        if (!placementComp || !cropComp) {
+        if (!transformComp || !cropComp || !placementComp) {
             qSeq = qe.project.getActiveSequence();
             if (!qSeq) {
                 dbg("QE sequence unavailable");
@@ -109,6 +109,11 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
             return _gridMaker_result("ERR", "crop_effect_unavailable", null, debugLines);
         }
         _gridMaker_resetTransformToNeutral(transformComp, debugLines);
+        if (motionComp) {
+            dbg("Placement strategy: Motion (default)");
+        } else {
+            dbg("Placement strategy: Transform fallback (Motion not found)");
+        }
 
         var frameSize = _gridMaker_getSequenceFrameSize(seq, qSeq);
         if (!frameSize || !_gridMaker_isFiniteNumber(frameSize.width) || !_gridMaker_isFiniteNumber(frameSize.height) || !(frameSize.width > 0) || !(frameSize.height > 0)) {
