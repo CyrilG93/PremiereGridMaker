@@ -65,7 +65,7 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
 
         var transformComp = _gridMaker_findTransformComponent(clip);
         var motionComp = _gridMaker_findMotionComponent(clip);
-        var placementComp = motionComp || transformComp;
+        var placementComp = transformComp;
         var cropComp = _gridMaker_findCropComponent(clip);
         dbg("Components pre-check placement=" + _gridMaker_componentLabel(placementComp) + " transform=" + _gridMaker_componentLabel(transformComp) + " motion=" + _gridMaker_componentLabel(motionComp) + " crop=" + _gridMaker_componentLabel(cropComp));
         _gridMaker_dumpPlacementComponents(clip, debugLines, "BEFORE");
@@ -86,11 +86,10 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
             }
             dbg("QE clip found");
 
-            if (!placementComp) {
+            if (!transformComp) {
                 transformComp = _gridMaker_ensureEffect(clip, qClip, _gridMaker_transformEffectLookupNames(), _gridMaker_findTransformComponent);
-                motionComp = _gridMaker_findMotionComponent(clip);
-                placementComp = motionComp || transformComp;
-                dbg("Placement component after ensure=" + _gridMaker_componentLabel(placementComp));
+                placementComp = transformComp;
+                dbg("Transform component after ensure=" + _gridMaker_componentLabel(transformComp));
             }
             if (!cropComp) {
                 cropComp = _gridMaker_ensureEffect(clip, qClip, _gridMaker_cropEffectLookupNames(), _gridMaker_findCropComponent);
@@ -98,10 +97,11 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
             }
         }
 
-        if (!placementComp) {
+        if (!transformComp) {
             dbg("Placement component unavailable");
             return _gridMaker_result("ERR", "transform_effect_unavailable", null, debugLines);
         }
+        placementComp = transformComp;
         if (!cropComp) {
             dbg("Crop component unavailable");
             return _gridMaker_result("ERR", "crop_effect_unavailable", null, debugLines);
