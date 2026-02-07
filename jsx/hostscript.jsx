@@ -108,7 +108,7 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
             dbg("Crop component unavailable");
             return _gridMaker_result("ERR", "crop_effect_unavailable", null, debugLines);
         }
-        _gridMaker_resetTransformToNeutral(transformComp, debugLines);
+        dbg("Transform strategy: ensured but untouched (native defaults preserved)");
         if (motionComp) {
             dbg("Placement strategy: Motion (default)");
         } else {
@@ -699,45 +699,6 @@ function _gridMaker_getCurrentScalePercent(component) {
     } catch (e1) {}
 
     return NaN;
-}
-
-function _gridMaker_resetTransformToNeutral(transformComp, debugLines) {
-    if (!transformComp) {
-        return;
-    }
-    if (_gridMaker_componentKind(transformComp) !== "transform") {
-        return;
-    }
-
-    _gridMaker_debugPush(debugLines, "Reset Transform to neutral state");
-
-    var uniform = _gridMaker_findProperty(transformComp, ["uniform scale", "echelle uniforme", "uniform"], "number");
-    if (uniform) {
-        _gridMaker_disableTimeVarying(uniform);
-        _gridMaker_trySetNumberProperty(uniform, 1, debugLines, "transform.uniform");
-    }
-
-    var scaleProp = _gridMaker_findProperty(transformComp, [
-        "scale",
-        "echelle",
-        "escala",
-        "scala",
-        "adbe transform scale"
-    ], "number");
-    if (scaleProp) {
-        _gridMaker_disableTimeVarying(scaleProp);
-        _gridMaker_trySetNumberProperty(scaleProp, 100, debugLines, "transform.scale");
-    }
-
-    var position = _gridMaker_findProperty(transformComp, [
-        "position",
-        "adbe transform position",
-        "adbe position"
-    ], "point2d");
-    if (position) {
-        _gridMaker_disableTimeVarying(position);
-        _gridMaker_trySetPointProperty(position, [0, 0], debugLines, "transform.position");
-    }
 }
 
 function _gridMaker_setPlacement(component, scale, x, y, frameW, frameH, debugLines) {
