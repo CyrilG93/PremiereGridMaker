@@ -51,17 +51,45 @@ Then include it in `index.html` before `js/main.js`.
 - OS: Windows and macOS
 - Technology: CEP panel + ExtendScript/QE API
 
-## Development install
+## Install scripts
+
+Windows (PowerShell):
+
+```powershell
+cd C:\Users\Admin\CascadeProjects\PremiereGridMaker
+.\scripts\install-win.ps1
+```
+
+macOS (Terminal):
+
+```bash
+cd /path/to/PremiereGridMaker
+chmod +x ./scripts/install-macos.sh
+./scripts/install-macos.sh
+```
+
+Options:
+
+- Install for all users/system scope:
+  - Windows: `.\scripts\install-win.ps1 -Scope System`
+  - macOS: `sudo ./scripts/install-macos.sh --scope system`
+- Skip debug mode changes:
+  - Windows: `.\scripts\install-win.ps1 -SkipDebugMode`
+  - macOS: `./scripts/install-macos.sh --skip-debug`
+
+## Manual install (fallback)
 
 1. Copy this folder as `PremiereGridMaker` into CEP extensions directory.
 
 Windows:
 
 - `C:\Program Files (x86)\Common Files\Adobe\CEP\extensions\PremiereGridMaker`
+- `C:\Users\<your-user>\AppData\Roaming\Adobe\CEP\extensions\PremiereGridMaker`
 
 macOS:
 
 - `/Library/Application Support/Adobe/CEP/extensions/PremiereGridMaker`
+- `~/Library/Application Support/Adobe/CEP/extensions/PremiereGridMaker`
 
 2. Enable CEP debug mode.
 
@@ -77,7 +105,7 @@ macOS (Terminal):
 defaults write com.adobe.CSXS.11 PlayerDebugMode 1
 ```
 
-3. Open Premiere Pro and launch panel:
+3. Open Premiere Pro and launch the panel:
 
 - `Window > Extensions (Legacy) > Premiere Grid Maker`
 
