@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Premiere Grid Maker</title>
+  <link rel="stylesheet" href="./css/style.css" />
+</head>
+<body>
+  <main class="app">
+    <header class="app-header">
+      <h1 data-i18n="app.title">Premiere Grid Maker</h1>
+      <div class="lang-picker">
+        <label for="languageSelect" data-i18n="label.language">Language</label>
+        <select id="languageSelect" aria-label="Language"></select>
+      </div>
+    </header>
+
+    <section class="panel">
+      <label for="rows" data-i18n="label.rows">Rows (height)</label>
+      <div class="input-row">
+        <input id="rows" type="range" min="1" max="8" value="2" />
+        <input id="rowsNumber" type="number" min="1" max="8" value="2" />
+      </div>
+
+      <label for="cols" data-i18n="label.cols">Columns (width)</label>
+      <div class="input-row">
+        <input id="cols" type="range" min="1" max="8" value="2" />
+        <input id="colsNumber" type="number" min="1" max="8" value="2" />
+      </div>
+
+      <label for="ratio" data-i18n="label.ratio">Target source ratio</label>
+      <select id="ratio">
+        <option value="16:9">16:9</option>
+        <option value="1:1">1:1</option>
+        <option value="9:16">9:16</option>
+        <option value="4:5">4:5</option>
+        <option value="3:2">3:2</option>
+      </select>
+
+      <p class="help" data-i18n="help.cellClick">
+        Click a cell below: the selected timeline video clip will be placed automatically.
+      </p>
+    </section>
+
+    <section class="panel">
+      <div class="grid-header">
+        <strong data-i18n="label.preview">Preview</strong>
+        <span id="summary">2 x 2</span>
+      </div>
+      <div id="gridPreview" class="grid-preview" aria-label="Grid"></div>
+    </section>
+
+    <div id="status" class="status" data-i18n="status.ready">Ready.</div>
+  </main>
+
+  <script src="./js/i18n-registry.js"></script>
+  <script src="./js/locales/en.js"></script>
+  <script src="./js/locales/fr.js"></script>
+  <script src="./js/main.js"></script>
+</body>
+</html>
