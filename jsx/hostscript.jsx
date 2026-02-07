@@ -126,7 +126,11 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
         cropB = _gridMaker_clamp(cropB * 100.0, 0, 49.5);
 
         visX = 1.0 - (cropL + cropR) / 100.0;
-        var scale = 100.0 / (cols * visX);
+        var baseScale = _gridMaker_getCurrentScalePercent(placementComp);
+        if (!(baseScale > 0)) {
+            baseScale = 100.0;
+        }
+        var scale = baseScale / (cols * visX);
 
         var x = frameW * ((col + 0.5) / cols);
         var y = frameH * ((row + 0.5) / rows);
@@ -430,6 +434,30 @@ function _gridMaker_findProperty(component, names) {
     }
 
     return null;
+}
+
+function _gridMaker_getCurrentScalePercent(component) {
+    var scaleProp = _gridMaker_findProperty(component, [
+        "scale",
+        "echelle",
+        "escala",
+        "scala",
+        "adbe transform scale",
+        "adbe scale",
+        "adbe motion scale"
+    ]);
+    if (!scaleProp) {
+        return NaN;
+    }
+
+    try {
+        var v = scaleProp.getValue();
+        if (typeof v === "number") {
+            return v;
+        }
+    } catch (e1) {}
+
+    return NaN;
 }
 
 function _gridMaker_setPlacement(component, scale, x, y, frameW, frameH) {
