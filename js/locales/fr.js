@@ -29,6 +29,7 @@
       "status.err.qe_unavailable": "La sequence QE est indisponible.",
       "status.err.qe_clip_not_found": "Impossible de trouver le clip selectionne via QE.",
       "status.err.invalid_sequence_size": "Impossible de lire la taille d'image de la sequence.",
+      "status.err.placement_apply_failed": "Impossible d'appliquer les valeurs de placement du clip.",
       "status.err.transform_effect_unavailable": "Effet Transform indisponible ou ajout echoue.",
       "status.err.crop_effect_unavailable": "Effet Crop indisponible ou ajout echoue.",
       "status.err.exception": "Erreur inattendue: {message}",

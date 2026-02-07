@@ -135,7 +135,12 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
         var x = frameW * ((col + 0.5) / cols);
         var y = frameH * ((row + 0.5) / rows);
 
-        _gridMaker_setPlacement(placementComp, scale, x, y, frameW, frameH);
+        if (!_gridMaker_setPlacement(placementComp, scale, x, y, frameW, frameH)) {
+            return _gridMaker_result("ERR", "placement_apply_failed", {
+                x: x.toFixed(3),
+                y: y.toFixed(3)
+            });
+        }
         _gridMaker_setCrop(cropComp, cropL, cropR, cropT, cropB);
 
         return _gridMaker_result("OK", "cell_applied", {
@@ -412,11 +417,18 @@ function _gridMaker_containsAny(source, hints) {
     return false;
 }
 
-function _gridMaker_findProperty(component, names) {
+function _gridMaker_findProperty(component, names, expectedKind) {
+    if (!component || !component.properties) {
+        return null;
+    }
+
     var targets = [];
     for (var i = 0; i < names.length; i++) {
         targets.push(names[i].toLowerCase());
     }
+
+    var bestProp = null;
+    var bestScore = -1;
 
     for (var p = 0; p < component.properties.numItems; p++) {
         var prop = component.properties[p];
@@ -427,13 +439,128 @@ function _gridMaker_findProperty(component, names) {
         var displayName = prop.displayName ? prop.displayName.toLowerCase() : "";
         var matchName = prop.matchName ? prop.matchName.toLowerCase() : "";
         for (var t = 0; t < targets.length; t++) {
-            if (displayName === targets[t] || displayName.indexOf(targets[t]) !== -1 || matchName.indexOf(targets[t]) !== -1) {
-                return prop;
+            var score = -1;
+            if (displayName === targets[t] || matchName === targets[t]) {
+                score = 3;
+            } else if (displayName.indexOf(targets[t]) !== -1 || matchName.indexOf(targets[t]) !== -1) {
+                score = 2;
+            } else if (targets[t].indexOf(displayName) !== -1 || targets[t].indexOf(matchName) !== -1) {
+                score = 1;
+            }
+
+            if (score > bestScore && _gridMaker_propertyMatchesExpected(prop, expectedKind)) {
+                bestScore = score;
+                bestProp = prop;
             }
         }
     }
 
+    return bestProp;
+}
+
+function _gridMaker_propertyMatchesExpected(prop, expectedKind) {
+    if (!expectedKind) {
+        return true;
+    }
+
+    var value = _gridMaker_readPropertyValue(prop);
+    if (expectedKind === "number") {
+        return _gridMaker_isFiniteNumber(value);
+    }
+    if (expectedKind === "point2d") {
+        return _gridMaker_isPointValue(value);
+    }
+
+    return true;
+}
+
+function _gridMaker_readPropertyValue(prop) {
+    if (!prop || typeof prop.getValue !== "function") {
+        return null;
+    }
+
+    try {
+        return prop.getValue();
+    } catch (e1) {}
+
     return null;
+}
+
+function _gridMaker_isFiniteNumber(value) {
+    return (typeof value === "number" && isFinite(value));
+}
+
+function _gridMaker_isPointValue(value) {
+    if (!value || value.length === undefined || value.length < 2) {
+        return false;
+    }
+    return _gridMaker_isFiniteNumber(parseFloat(value[0])) && _gridMaker_isFiniteNumber(parseFloat(value[1]));
+}
+
+function _gridMaker_disableTimeVarying(prop) {
+    if (!prop || typeof prop.isTimeVarying !== "function" || typeof prop.setTimeVarying !== "function") {
+        return;
+    }
+
+    try {
+        if (prop.isTimeVarying()) {
+            prop.setTimeVarying(false);
+        }
+    } catch (e1) {}
+}
+
+function _gridMaker_trySetNumberProperty(prop, value) {
+    if (!prop || !_gridMaker_isFiniteNumber(value)) {
+        return false;
+    }
+
+    try {
+        prop.setValue(value, true);
+        var readback = _gridMaker_readPropertyValue(prop);
+        if (_gridMaker_isFiniteNumber(readback)) {
+            return true;
+        }
+    } catch (e1) {}
+
+    _gridMaker_disableTimeVarying(prop);
+
+    try {
+        prop.setValue(value, true);
+        var readback2 = _gridMaker_readPropertyValue(prop);
+        return _gridMaker_isFiniteNumber(readback2);
+    } catch (e2) {}
+
+    return false;
+}
+
+function _gridMaker_trySetPointProperty(prop, point) {
+    if (!prop || !point || point.length < 2) {
+        return false;
+    }
+
+    var x = parseFloat(point[0]);
+    var y = parseFloat(point[1]);
+    if (!_gridMaker_isFiniteNumber(x) || !_gridMaker_isFiniteNumber(y)) {
+        return false;
+    }
+
+    try {
+        prop.setValue([x, y], true);
+        var readback = _gridMaker_readPropertyValue(prop);
+        if (_gridMaker_isPointValue(readback)) {
+            return true;
+        }
+    } catch (e1) {}
+
+    _gridMaker_disableTimeVarying(prop);
+
+    try {
+        prop.setValue([x, y], true);
+        var readback2 = _gridMaker_readPropertyValue(prop);
+        return _gridMaker_isPointValue(readback2);
+    } catch (e2) {}
+
+    return false;
 }
 
 function _gridMaker_getCurrentScalePercent(component) {
@@ -445,7 +572,7 @@ function _gridMaker_getCurrentScalePercent(component) {
         "adbe transform scale",
         "adbe scale",
         "adbe motion scale"
-    ]);
+    ], "number");
     if (!scaleProp) {
         return NaN;
     }
@@ -465,9 +592,7 @@ function _gridMaker_setPlacement(component, scale, x, y, frameW, frameH) {
 
     var uniform = _gridMaker_findProperty(component, ["uniform scale", "echelle uniforme", "uniform"]);
     if (uniform) {
-        try {
-            uniform.setValue(1, true);
-        } catch (e1) {}
+        _gridMaker_trySetNumberProperty(uniform, 1);
     }
 
     var scaleProp = _gridMaker_findProperty(component, [
@@ -478,33 +603,52 @@ function _gridMaker_setPlacement(component, scale, x, y, frameW, frameH) {
         "adbe transform scale",
         "adbe scale",
         "adbe motion scale"
-    ]);
-    if (scaleProp) {
-        try {
-            scaleProp.setValue(scale, true);
-        } catch (e2) {}
-    }
+    ], "number");
+    var scaleOk = _gridMaker_trySetNumberProperty(scaleProp, scale);
 
     var position = _gridMaker_findProperty(component, [
         "position",
         "adbe transform position",
         "adbe position",
         "adbe motion position"
-    ]);
-    if (position) {
-        var px = x;
-        var py = y;
-
-        // Transform effect position is an offset from frame center; Motion uses absolute sequence coordinates.
-        if (kind === "transform") {
-            px = x - (frameW * 0.5);
-            py = y - (frameH * 0.5);
-        }
-
-        try {
-            position.setValue([px, py], true);
-        } catch (e3) {}
+    ], "point2d");
+    if (!position) {
+        return false;
     }
+
+    var candidates = _gridMaker_buildPositionCandidates(kind, x, y, frameW, frameH);
+    var positionOk = false;
+    for (var i = 0; i < candidates.length; i++) {
+        if (_gridMaker_trySetPointProperty(position, candidates[i])) {
+            var readback = _gridMaker_readPropertyValue(position);
+            if (_gridMaker_isPointValue(readback)) {
+                var rx = parseFloat(readback[0]);
+                var ry = parseFloat(readback[1]);
+                if (_gridMaker_isFiniteNumber(rx) && _gridMaker_isFiniteNumber(ry) && Math.abs(rx) < 100000 && Math.abs(ry) < 100000) {
+                    positionOk = true;
+                    break;
+                }
+            } else {
+                positionOk = true;
+                break;
+            }
+        }
+    }
+
+    return !!scaleOk && !!positionOk;
+}
+
+function _gridMaker_buildPositionCandidates(kind, x, y, frameW, frameH) {
+    var absolute = [x, y];
+    var centered = [x - (frameW * 0.5), y - (frameH * 0.5)];
+
+    if (kind === "transform") {
+        return [centered, absolute];
+    }
+    if (kind === "motion") {
+        return [absolute, centered];
+    }
+    return [absolute, centered];
 }
 
 function _gridMaker_componentKind(component) {
