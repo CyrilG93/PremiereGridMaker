@@ -65,7 +65,7 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
 
         var transformComp = _gridMaker_findTransformComponent(clip);
         var motionComp = _gridMaker_findMotionComponent(clip);
-        var placementComp = transformComp;
+        var placementComp = motionComp || transformComp;
         var cropComp = _gridMaker_findCropComponent(clip);
         dbg("Components pre-check placement=" + _gridMaker_componentLabel(placementComp) + " transform=" + _gridMaker_componentLabel(transformComp) + " motion=" + _gridMaker_componentLabel(motionComp) + " crop=" + _gridMaker_componentLabel(cropComp));
         _gridMaker_dumpPlacementComponents(clip, debugLines, "BEFORE");
@@ -88,24 +88,27 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
 
             if (!transformComp) {
                 transformComp = _gridMaker_ensureEffect(clip, qClip, _gridMaker_transformEffectLookupNames(), _gridMaker_findTransformComponent);
-                placementComp = transformComp;
                 dbg("Transform component after ensure=" + _gridMaker_componentLabel(transformComp));
             }
             if (!cropComp) {
                 cropComp = _gridMaker_ensureEffect(clip, qClip, _gridMaker_cropEffectLookupNames(), _gridMaker_findCropComponent);
                 dbg("Crop component after ensure=" + _gridMaker_componentLabel(cropComp));
             }
+
+            motionComp = _gridMaker_findMotionComponent(clip);
+            placementComp = motionComp || transformComp;
+            dbg("Placement component after ensure=" + _gridMaker_componentLabel(placementComp));
         }
 
         if (!transformComp) {
             dbg("Placement component unavailable");
             return _gridMaker_result("ERR", "transform_effect_unavailable", null, debugLines);
         }
-        placementComp = transformComp;
         if (!cropComp) {
             dbg("Crop component unavailable");
             return _gridMaker_result("ERR", "crop_effect_unavailable", null, debugLines);
         }
+        _gridMaker_resetTransformToNeutral(transformComp, debugLines);
 
         var frameSize = _gridMaker_getSequenceFrameSize(seq, qSeq);
         if (!frameSize || !_gridMaker_isFiniteNumber(frameSize.width) || !_gridMaker_isFiniteNumber(frameSize.height) || !(frameSize.width > 0) || !(frameSize.height > 0)) {
@@ -691,6 +694,45 @@ function _gridMaker_getCurrentScalePercent(component) {
     } catch (e1) {}
 
     return NaN;
+}
+
+function _gridMaker_resetTransformToNeutral(transformComp, debugLines) {
+    if (!transformComp) {
+        return;
+    }
+    if (_gridMaker_componentKind(transformComp) !== "transform") {
+        return;
+    }
+
+    _gridMaker_debugPush(debugLines, "Reset Transform to neutral state");
+
+    var uniform = _gridMaker_findProperty(transformComp, ["uniform scale", "echelle uniforme", "uniform"], "number");
+    if (uniform) {
+        _gridMaker_disableTimeVarying(uniform);
+        _gridMaker_trySetNumberProperty(uniform, 1, debugLines, "transform.uniform");
+    }
+
+    var scaleProp = _gridMaker_findProperty(transformComp, [
+        "scale",
+        "echelle",
+        "escala",
+        "scala",
+        "adbe transform scale"
+    ], "number");
+    if (scaleProp) {
+        _gridMaker_disableTimeVarying(scaleProp);
+        _gridMaker_trySetNumberProperty(scaleProp, 100, debugLines, "transform.scale");
+    }
+
+    var position = _gridMaker_findProperty(transformComp, [
+        "position",
+        "adbe transform position",
+        "adbe position"
+    ], "point2d");
+    if (position) {
+        _gridMaker_disableTimeVarying(position);
+        _gridMaker_trySetPointProperty(position, [0, 0], debugLines, "transform.position");
+    }
 }
 
 function _gridMaker_setPlacement(component, scale, x, y, frameW, frameH, debugLines) {
