@@ -68,6 +68,7 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
         var placementComp = motionComp || transformComp;
         var cropComp = _gridMaker_findCropComponent(clip);
         dbg("Components pre-check placement=" + _gridMaker_componentLabel(placementComp) + " transform=" + _gridMaker_componentLabel(transformComp) + " motion=" + _gridMaker_componentLabel(motionComp) + " crop=" + _gridMaker_componentLabel(cropComp));
+        _gridMaker_dumpPlacementComponents(clip, debugLines, "BEFORE");
 
         var qSeq = null;
         if (!placementComp || !cropComp) {
@@ -182,6 +183,7 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
         dbg("Placement write succeeded");
         dbg("Readback scale=" + _gridMaker_getCurrentScalePercent(placementComp));
         dbg("Readback position=" + _gridMaker_pointToString(_gridMaker_getCurrentPosition(placementComp)));
+        _gridMaker_dumpPlacementComponents(clip, debugLines, "AFTER");
 
         return _gridMaker_result("OK", "cell_applied", {
             row: row + 1,
@@ -849,6 +851,52 @@ function _gridMaker_debugPush(debugLines, message) {
         return;
     }
     debugLines.push(String(message));
+}
+
+function _gridMaker_dumpPlacementComponents(clip, debugLines, phase) {
+    if (!clip || !clip.components) {
+        return;
+    }
+
+    _gridMaker_debugPush(debugLines, phase + " COMPONENT SNAPSHOT START");
+    for (var c = 0; c < clip.components.numItems; c++) {
+        var comp = clip.components[c];
+        if (!comp) {
+            continue;
+        }
+
+        var compLabel = _gridMaker_componentLabel(comp);
+        var posProp = _gridMaker_findProperty(comp, [
+            "position",
+            "adbe transform position",
+            "adbe position",
+            "adbe motion position"
+        ], "point2d");
+        var scaleProp = _gridMaker_findProperty(comp, [
+            "scale",
+            "echelle",
+            "escala",
+            "scala",
+            "adbe transform scale",
+            "adbe scale",
+            "adbe motion scale"
+        ], "number");
+
+        var hasPlacement = !!posProp || !!scaleProp;
+        if (!hasPlacement) {
+            continue;
+        }
+
+        var posVal = posProp ? _gridMaker_pointToString(_gridMaker_readPropertyValue(posProp)) : "<none>";
+        var scaleVal = scaleProp ? _gridMaker_readPropertyValue(scaleProp) : "<none>";
+        _gridMaker_debugPush(
+            debugLines,
+            phase + " comp#" + c + " " + compLabel +
+            " posProp=" + _gridMaker_propertyLabel(posProp) + " pos=" + posVal +
+            " scaleProp=" + _gridMaker_propertyLabel(scaleProp) + " scale=" + scaleVal
+        );
+    }
+    _gridMaker_debugPush(debugLines, phase + " COMPONENT SNAPSHOT END");
 }
 
 function _gridMaker_getSequenceFrameSize(seq, qSeq) {
