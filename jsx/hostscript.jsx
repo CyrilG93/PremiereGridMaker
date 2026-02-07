@@ -75,7 +75,7 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
         }
 
         var frameSize = _gridMaker_getSequenceFrameSize(seq, qSeq);
-        if (!frameSize || !(frameSize.width > 0) || !(frameSize.height > 0)) {
+        if (!frameSize || !_gridMaker_isFiniteNumber(frameSize.width) || !_gridMaker_isFiniteNumber(frameSize.height) || !(frameSize.width > 0) || !(frameSize.height > 0)) {
             return _gridMaker_result("ERR", "invalid_sequence_size");
         }
         var frameW = frameSize.width;
@@ -361,7 +361,8 @@ function _gridMaker_findTransformComponent(clip) {
     return _gridMaker_findComponentByHints(
         clip,
         ["transform", "transformation", "trasform", "transformar", "transformier"],
-        ["adbe transform", "adbe geometry2", "ae.adbe geometry2"]
+        ["adbe transform", "adbe geometry2", "ae.adbe geometry2"],
+        false
     );
 }
 
@@ -369,7 +370,8 @@ function _gridMaker_findMotionComponent(clip) {
     return _gridMaker_findComponentByHints(
         clip,
         ["motion", "mouvement", "movimiento", "movimento", "beweg"],
-        ["adbe motion"]
+        ["adbe motion"],
+        true
     );
 }
 
@@ -377,14 +379,18 @@ function _gridMaker_findCropComponent(clip) {
     return _gridMaker_findComponentByHints(
         clip,
         ["crop", "recadr", "recortar", "ritagli", "freistell"],
-        ["adbe crop", "ae.adbe crop"]
+        ["adbe crop", "ae.adbe crop"],
+        false
     );
 }
 
-function _gridMaker_findComponentByHints(clip, displayHints, matchHints) {
+function _gridMaker_findComponentByHints(clip, displayHints, matchHints, requirePlacementProps) {
     if (!clip || !clip.components) {
         return null;
     }
+
+    var bestComp = null;
+    var bestScore = -1;
 
     for (var c = 0; c < clip.components.numItems; c++) {
         var comp = clip.components[c];
@@ -395,12 +401,60 @@ function _gridMaker_findComponentByHints(clip, displayHints, matchHints) {
         var displayName = comp.displayName ? comp.displayName.toLowerCase() : "";
         var matchName = comp.matchName ? comp.matchName.toLowerCase() : "";
 
-        if (_gridMaker_containsAny(displayName, displayHints) || _gridMaker_containsAny(matchName, matchHints)) {
-            return comp;
+        if (requirePlacementProps && !_gridMaker_componentHasPlacementProps(comp)) {
+            continue;
+        }
+
+        var score = _gridMaker_componentMatchScore(displayName, matchName, displayHints, matchHints);
+        if (score > bestScore) {
+            bestScore = score;
+            bestComp = comp;
         }
     }
 
-    return null;
+    return bestComp;
+}
+
+function _gridMaker_componentMatchScore(displayName, matchName, displayHints, matchHints) {
+    var score = -1;
+
+    for (var i = 0; i < matchHints.length; i++) {
+        if (matchName === matchHints[i]) {
+            score = Math.max(score, 100);
+        } else if (matchName.indexOf(matchHints[i]) !== -1) {
+            score = Math.max(score, 90);
+        }
+    }
+
+    for (var j = 0; j < displayHints.length; j++) {
+        if (displayName === displayHints[j]) {
+            score = Math.max(score, 80);
+        } else if (displayName.indexOf(displayHints[j]) !== -1) {
+            score = Math.max(score, 70);
+        }
+    }
+
+    return score;
+}
+
+function _gridMaker_componentHasPlacementProps(component) {
+    var pos = _gridMaker_findProperty(component, [
+        "position",
+        "adbe transform position",
+        "adbe position",
+        "adbe motion position"
+    ], "point2d");
+    var scale = _gridMaker_findProperty(component, [
+        "scale",
+        "echelle",
+        "escala",
+        "scala",
+        "adbe transform scale",
+        "adbe scale",
+        "adbe motion scale"
+    ], "number");
+
+    return !!pos && !!scale;
 }
 
 function _gridMaker_containsAny(source, hints) {
@@ -444,8 +498,6 @@ function _gridMaker_findProperty(component, names, expectedKind) {
                 score = 3;
             } else if (displayName.indexOf(targets[t]) !== -1 || matchName.indexOf(targets[t]) !== -1) {
                 score = 2;
-            } else if (targets[t].indexOf(displayName) !== -1 || targets[t].indexOf(matchName) !== -1) {
-                score = 1;
             }
 
             if (score > bestScore && _gridMaker_propertyMatchesExpected(prop, expectedKind)) {
@@ -491,7 +543,7 @@ function _gridMaker_isFiniteNumber(value) {
 }
 
 function _gridMaker_isPointValue(value) {
-    if (!value || value.length === undefined || value.length < 2) {
+    if (!value || value.length === undefined || value.length !== 2) {
         return false;
     }
     return _gridMaker_isFiniteNumber(parseFloat(value[0])) && _gridMaker_isFiniteNumber(parseFloat(value[1]));
@@ -678,38 +730,93 @@ function _gridMaker_componentKind(component) {
 }
 
 function _gridMaker_getSequenceFrameSize(seq, qSeq) {
-    var width = NaN;
-    var height = NaN;
+    var candidates = [];
 
     try {
-        width = parseFloat(seq.frameSizeHorizontal);
-        height = parseFloat(seq.frameSizeVertical);
+        candidates.push({
+            width: _gridMaker_toNumber(seq.frameSizeHorizontal),
+            height: _gridMaker_toNumber(seq.frameSizeVertical)
+        });
     } catch (e1) {}
 
-    if (!(width > 0) || !(height > 0)) {
-        try {
-            var settings = seq.getSettings();
-            if (settings) {
-                width = parseFloat(settings.videoFrameWidth);
-                height = parseFloat(settings.videoFrameHeight);
-            }
-        } catch (e2) {}
-    }
+    try {
+        var settings = seq.getSettings();
+        if (settings) {
+            candidates.push({
+                width: _gridMaker_toNumber(settings.videoFrameWidth),
+                height: _gridMaker_toNumber(settings.videoFrameHeight)
+            });
+        }
+    } catch (e2) {}
 
-    if ((!(width > 0) || !(height > 0)) && qSeq) {
+    if (qSeq) {
         try {
-            if (qSeq.sequence && qSeq.sequence.videoFrameWidth && qSeq.sequence.videoFrameHeight) {
-                width = parseFloat(qSeq.sequence.videoFrameWidth);
-                height = parseFloat(qSeq.sequence.videoFrameHeight);
-            }
+            candidates.push({
+                width: _gridMaker_toNumber(qSeq.videoFrameWidth),
+                height: _gridMaker_toNumber(qSeq.videoFrameHeight)
+            });
         } catch (e3) {}
+
+        try {
+            if (qSeq.sequence) {
+                candidates.push({
+                    width: _gridMaker_toNumber(qSeq.sequence.videoFrameWidth),
+                    height: _gridMaker_toNumber(qSeq.sequence.videoFrameHeight)
+                });
+            }
+        } catch (e4) {}
     }
 
-    if (!(width > 0) || !(height > 0)) {
-        return null;
+    for (var i = 0; i < candidates.length; i++) {
+        if (_gridMaker_isReasonableFrameSize(candidates[i].width, candidates[i].height)) {
+            return candidates[i];
+        }
     }
 
-    return { width: width, height: height };
+    return null;
+}
+
+function _gridMaker_toNumber(value) {
+    if (value === null || value === undefined) {
+        return NaN;
+    }
+
+    if (typeof value === "number") {
+        return value;
+    }
+
+    if (typeof value === "string") {
+        var normalized = value.replace(",", ".");
+        var parsed = parseFloat(normalized);
+        return isNaN(parsed) ? NaN : parsed;
+    }
+
+    try {
+        if (value.value !== undefined) {
+            return _gridMaker_toNumber(value.value);
+        }
+    } catch (e1) {}
+
+    try {
+        if (value.seconds !== undefined) {
+            return _gridMaker_toNumber(value.seconds);
+        }
+    } catch (e2) {}
+
+    return NaN;
+}
+
+function _gridMaker_isReasonableFrameSize(width, height) {
+    if (!_gridMaker_isFiniteNumber(width) || !_gridMaker_isFiniteNumber(height)) {
+        return false;
+    }
+    if (width < 16 || height < 16) {
+        return false;
+    }
+    if (width > 20000 || height > 20000) {
+        return false;
+    }
+    return true;
 }
 
 function _gridMaker_setCrop(component, left, right, top, bottom) {
