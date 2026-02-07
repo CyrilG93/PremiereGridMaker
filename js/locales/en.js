@@ -28,6 +28,7 @@
       "status.err.invalid_ratio": "Invalid ratio.",
       "status.err.no_selection": "Select a clip in the timeline.",
       "status.err.no_video_selected": "No selected video clip found.",
+      "status.err.multiple_video_selected": "Select exactly one video clip (audio can stay linked).",
       "status.err.qe_unavailable": "QE sequence is unavailable.",
       "status.err.qe_clip_not_found": "Unable to find selected clip in QE API.",
       "status.err.invalid_sequence_size": "Unable to read sequence frame size.",

@@ -44,17 +44,23 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
         }
         dbg("Selection length=" + selection.length);
 
-        var clip = null;
+        var videoClips = [];
         for (var i = 0; i < selection.length; i++) {
             if (selection[i] && selection[i].mediaType === "Video") {
-                clip = selection[i];
-                break;
+                videoClips.push(selection[i]);
+                dbg("Selected video #" + videoClips.length + " name=" + _gridMaker_clipName(selection[i]) + " start=" + _gridMaker_timeToSeconds(selection[i].start) + " end=" + _gridMaker_timeToSeconds(selection[i].end));
             }
         }
-        if (!clip) {
+        dbg("Video clips in selection=" + videoClips.length);
+        if (videoClips.length < 1) {
             dbg("No selected video clip found in selection");
             return _gridMaker_result("ERR", "no_video_selected", null, debugLines);
         }
+        if (videoClips.length > 1) {
+            dbg("Multiple selected video clips; abort for deterministic behavior");
+            return _gridMaker_result("ERR", "multiple_video_selected", null, debugLines);
+        }
+        var clip = videoClips[0];
         dbg("Clip name=" + _gridMaker_clipName(clip) + " start=" + _gridMaker_timeToSeconds(clip.start) + " end=" + _gridMaker_timeToSeconds(clip.end));
 
         var transformComp = _gridMaker_findTransformComponent(clip);
@@ -704,6 +710,7 @@ function _gridMaker_setPlacement(component, scale, x, y, frameW, frameH, debugLi
         "adbe motion scale"
     ], "number");
     _gridMaker_debugPush(debugLines, "Scale property=" + _gridMaker_propertyLabel(scaleProp) + " target=" + scale);
+    _gridMaker_disableTimeVarying(scaleProp);
     var scaleOk = _gridMaker_trySetNumberProperty(scaleProp, scale, debugLines, "scale");
 
     var position = _gridMaker_findProperty(component, [
@@ -717,6 +724,7 @@ function _gridMaker_setPlacement(component, scale, x, y, frameW, frameH, debugLi
         return false;
     }
     _gridMaker_debugPush(debugLines, "Position property=" + _gridMaker_propertyLabel(position) + " targetAbs=[" + x + "," + y + "]");
+    _gridMaker_disableTimeVarying(position);
 
     var candidates = _gridMaker_buildPositionCandidates(kind, x, y, frameW, frameH);
     var positionOk = false;
@@ -940,21 +948,25 @@ function _gridMaker_setCrop(component, left, right, top, bottom) {
     var pBottom = _gridMaker_findProperty(component, ["bottom", "bas", "adbe crop bottom"]);
 
     if (pLeft) {
+        _gridMaker_disableTimeVarying(pLeft);
         try {
             pLeft.setValue(left, true);
         } catch (e1) {}
     }
     if (pRight) {
+        _gridMaker_disableTimeVarying(pRight);
         try {
             pRight.setValue(right, true);
         } catch (e2) {}
     }
     if (pTop) {
+        _gridMaker_disableTimeVarying(pTop);
         try {
             pTop.setValue(top, true);
         } catch (e3) {}
     }
     if (pBottom) {
+        _gridMaker_disableTimeVarying(pBottom);
         try {
             pBottom.setValue(bottom, true);
         } catch (e4) {}
