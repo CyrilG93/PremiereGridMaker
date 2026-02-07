@@ -57,25 +57,25 @@ Windows (PowerShell):
 
 ```powershell
 cd C:\Users\Admin\CascadeProjects\PremiereGridMaker
-.\scripts\install-win.ps1
+.\install-win.bat
 ```
 
 macOS (Terminal):
 
 ```bash
 cd /path/to/PremiereGridMaker
-chmod +x ./scripts/install-macos.sh
-./scripts/install-macos.sh
+chmod +x ./install-macos.sh
+./install-macos.sh
 ```
 
 Options:
 
 - Install for all users/system scope:
-  - Windows: `.\scripts\install-win.ps1 -Scope System`
-  - macOS: `sudo ./scripts/install-macos.sh --scope system`
+  - Windows: `.\install-win.bat --scope System`
+  - macOS: `sudo ./install-macos.sh --scope system`
 - Skip debug mode changes:
-  - Windows: `.\scripts\install-win.ps1 -SkipDebugMode`
-  - macOS: `./scripts/install-macos.sh --skip-debug`
+  - Windows: `.\install-win.bat --skip-debug`
+  - macOS: `./install-macos.sh --skip-debug`
 
 ## Manual install (fallback)
 

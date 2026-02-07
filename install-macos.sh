@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: ./scripts/install-macos.sh [--scope user|system] [--skip-debug]"
+  echo "Usage: ./install-macos.sh [--scope user|system] [--skip-debug]"
 }
 
 scope="user"
@@ -45,7 +45,7 @@ if [[ "$scope" == "system" && "${EUID}" -ne 0 ]]; then
 fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-repo_root="$(cd "${script_dir}/.." && pwd)"
+repo_root="${script_dir}"
 extension_name="PremiereGridMaker"
 
 if [[ "$scope" == "system" ]]; then
