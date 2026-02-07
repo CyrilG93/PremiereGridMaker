@@ -40,10 +40,12 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
             return _gridMaker_result("ERR", "no_video_selected");
         }
 
-        var transformComp = _gridMaker_findComponent(clip, ["Transform", "Transformation"]);
-        var cropComp = _gridMaker_findComponent(clip, ["Crop", "Recadrage"]);
+        var transformComp = _gridMaker_findTransformComponent(clip);
+        var motionComp = _gridMaker_findMotionComponent(clip);
+        var placementComp = transformComp || motionComp;
+        var cropComp = _gridMaker_findCropComponent(clip);
 
-        if (!transformComp || !cropComp) {
+        if (!placementComp || !cropComp) {
             var qSeq = qe.project.getActiveSequence();
             if (!qSeq) {
                 return _gridMaker_result("ERR", "qe_unavailable");
@@ -54,15 +56,17 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
                 return _gridMaker_result("ERR", "qe_clip_not_found");
             }
 
-            if (!transformComp) {
-                transformComp = _gridMaker_ensureEffect(clip, qClip, ["Transform", "Transformation"]);
+            if (!placementComp) {
+                transformComp = _gridMaker_ensureEffect(clip, qClip, _gridMaker_transformEffectLookupNames(), _gridMaker_findTransformComponent);
+                motionComp = _gridMaker_findMotionComponent(clip);
+                placementComp = transformComp || motionComp;
             }
             if (!cropComp) {
-                cropComp = _gridMaker_ensureEffect(clip, qClip, ["Crop", "Recadrage"]);
+                cropComp = _gridMaker_ensureEffect(clip, qClip, _gridMaker_cropEffectLookupNames(), _gridMaker_findCropComponent);
             }
         }
 
-        if (!transformComp) {
+        if (!placementComp) {
             return _gridMaker_result("ERR", "transform_effect_unavailable");
         }
         if (!cropComp) {
@@ -122,7 +126,7 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
         var x = frameW * ((col + 0.5) / cols);
         var y = frameH * ((row + 0.5) / rows);
 
-        _gridMaker_setTransform(transformComp, scale, x, y);
+        _gridMaker_setTransform(placementComp, scale, x, y);
         _gridMaker_setCrop(cropComp, cropL, cropR, cropT, cropB);
 
         return _gridMaker_result("OK", "cell_applied", {
@@ -292,27 +296,80 @@ function _gridMaker_timeToSeconds(timeLike) {
     return NaN;
 }
 
-function _gridMaker_ensureEffect(clip, qClip, names) {
-    var comp = _gridMaker_findComponent(clip, names);
+function _gridMaker_ensureEffect(clip, qClip, lookupNames, resolverFn) {
+    var comp = resolverFn(clip);
     if (comp) {
         return comp;
     }
 
-    for (var i = 0; i < names.length; i++) {
-        var fx = qe.project.getVideoEffectByName(names[i]);
-        if (fx) {
-            qClip.addVideoEffect(fx);
-            break;
-        }
+    for (var i = 0; i < lookupNames.length; i++) {
+        try {
+            var fx = qe.project.getVideoEffectByName(lookupNames[i]);
+            if (fx) {
+                qClip.addVideoEffect(fx);
+                comp = resolverFn(clip);
+                if (comp) {
+                    return comp;
+                }
+            }
+        } catch (e1) {}
     }
 
-    return _gridMaker_findComponent(clip, names);
+    return resolverFn(clip);
 }
 
-function _gridMaker_findComponent(clip, names) {
-    var lowerNames = [];
-    for (var i = 0; i < names.length; i++) {
-        lowerNames.push(names[i].toLowerCase());
+function _gridMaker_transformEffectLookupNames() {
+    return [
+        "Transform",
+        "Transformation",
+        "Trasformazione",
+        "Transformar",
+        "Transformieren",
+        "ADBE Transform",
+        "ADBE Geometry2",
+        "AE.ADBE Geometry2"
+    ];
+}
+
+function _gridMaker_cropEffectLookupNames() {
+    return [
+        "Crop",
+        "Recadrage",
+        "Recortar",
+        "Ritaglia",
+        "Freistellen",
+        "ADBE Crop",
+        "AE.ADBE Crop"
+    ];
+}
+
+function _gridMaker_findTransformComponent(clip) {
+    return _gridMaker_findComponentByHints(
+        clip,
+        ["transform", "transformation", "trasform", "transformar", "transformier"],
+        ["adbe transform", "adbe geometry2", "ae.adbe geometry2"]
+    );
+}
+
+function _gridMaker_findMotionComponent(clip) {
+    return _gridMaker_findComponentByHints(
+        clip,
+        ["motion", "mouvement", "movimiento", "movimento", "beweg"],
+        ["adbe motion"]
+    );
+}
+
+function _gridMaker_findCropComponent(clip) {
+    return _gridMaker_findComponentByHints(
+        clip,
+        ["crop", "recadr", "recortar", "ritagli", "freistell"],
+        ["adbe crop", "ae.adbe crop"]
+    );
+}
+
+function _gridMaker_findComponentByHints(clip, displayHints, matchHints) {
+    if (!clip || !clip.components) {
+        return null;
     }
 
     for (var c = 0; c < clip.components.numItems; c++) {
@@ -324,21 +381,26 @@ function _gridMaker_findComponent(clip, names) {
         var displayName = comp.displayName ? comp.displayName.toLowerCase() : "";
         var matchName = comp.matchName ? comp.matchName.toLowerCase() : "";
 
-        for (var n = 0; n < lowerNames.length; n++) {
-            if (displayName.indexOf(lowerNames[n]) !== -1 || matchName.indexOf(lowerNames[n]) !== -1) {
-                return comp;
-            }
-        }
-
-        if (matchName.indexOf("adbe transform") !== -1 && (lowerNames[0].indexOf("transform") !== -1 || lowerNames[0].indexOf("transformation") !== -1)) {
-            return comp;
-        }
-        if (matchName.indexOf("adbe crop") !== -1 && (lowerNames[0].indexOf("crop") !== -1 || lowerNames[0].indexOf("recadr") !== -1)) {
+        if (_gridMaker_containsAny(displayName, displayHints) || _gridMaker_containsAny(matchName, matchHints)) {
             return comp;
         }
     }
 
     return null;
+}
+
+function _gridMaker_containsAny(source, hints) {
+    if (!source || !hints || hints.length < 1) {
+        return false;
+    }
+
+    for (var i = 0; i < hints.length; i++) {
+        if (source.indexOf(hints[i]) !== -1) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 function _gridMaker_findProperty(component, names) {
@@ -373,14 +435,27 @@ function _gridMaker_setTransform(component, scale, x, y) {
         } catch (e1) {}
     }
 
-    var scaleProp = _gridMaker_findProperty(component, ["scale", "echelle", "adbe transform scale"]);
+    var scaleProp = _gridMaker_findProperty(component, [
+        "scale",
+        "echelle",
+        "escala",
+        "scala",
+        "adbe transform scale",
+        "adbe scale",
+        "adbe motion scale"
+    ]);
     if (scaleProp) {
         try {
             scaleProp.setValue(scale, true);
         } catch (e2) {}
     }
 
-    var position = _gridMaker_findProperty(component, ["position", "adbe transform position"]);
+    var position = _gridMaker_findProperty(component, [
+        "position",
+        "adbe transform position",
+        "adbe position",
+        "adbe motion position"
+    ]);
     if (position) {
         try {
             position.setValue([x, y], true);
