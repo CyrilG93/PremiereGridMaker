@@ -37,8 +37,8 @@
               <Height>640</Height>
             </Size>
             <MinSize>
-              <Width>360</Width>
-              <Height>520</Height>
+              <Width>260</Width>
+              <Height>320</Height>
             </MinSize>
           </Geometry>
         </UI>

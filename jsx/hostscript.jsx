@@ -40,18 +40,27 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
             return _gridMaker_result("ERR", "no_video_selected");
         }
 
-        var qSeq = qe.project.getActiveSequence();
-        if (!qSeq) {
-            return _gridMaker_result("ERR", "qe_unavailable");
-        }
+        var transformComp = _gridMaker_findComponent(clip, ["Transform", "Transformation"]);
+        var cropComp = _gridMaker_findComponent(clip, ["Crop", "Recadrage"]);
 
-        var qClip = _gridMaker_findQEClip(qSeq, clip.start.seconds, clip.end.seconds);
-        if (!qClip) {
-            return _gridMaker_result("ERR", "qe_clip_not_found");
-        }
+        if (!transformComp || !cropComp) {
+            var qSeq = qe.project.getActiveSequence();
+            if (!qSeq) {
+                return _gridMaker_result("ERR", "qe_unavailable");
+            }
 
-        var transformComp = _gridMaker_ensureEffect(clip, qClip, ["Transform", "Transformation"]);
-        var cropComp = _gridMaker_ensureEffect(clip, qClip, ["Crop", "Recadrage"]);
+            var qClip = _gridMaker_findQEClip(qSeq, seq, clip);
+            if (!qClip) {
+                return _gridMaker_result("ERR", "qe_clip_not_found");
+            }
+
+            if (!transformComp) {
+                transformComp = _gridMaker_ensureEffect(clip, qClip, ["Transform", "Transformation"]);
+            }
+            if (!cropComp) {
+                cropComp = _gridMaker_ensureEffect(clip, qClip, ["Crop", "Recadrage"]);
+            }
+        }
 
         if (!transformComp) {
             return _gridMaker_result("ERR", "transform_effect_unavailable");
@@ -126,10 +135,15 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
     }
 }
 
-function _gridMaker_findQEClip(qSeq, startSeconds, endSeconds) {
-    var tolerance = 0.05;
-    var start = parseFloat(startSeconds);
-    var end = parseFloat(endSeconds);
+function _gridMaker_findQEClip(qSeq, seq, clip) {
+    var targetStart = _gridMaker_timeToSeconds(clip.start);
+    var targetEnd = _gridMaker_timeToSeconds(clip.end);
+    var targetDuration = targetEnd - targetStart;
+    var targetTrack = _gridMaker_findTrackIndex(seq, clip);
+    var targetName = _gridMaker_clipName(clip);
+
+    var bestItem = null;
+    var bestScore = Number.MAX_VALUE;
 
     for (var vt = 0; vt < qSeq.numVideoTracks; vt++) {
         var track = qSeq.getVideoTrackAt(vt);
@@ -143,15 +157,139 @@ function _gridMaker_findQEClip(qSeq, startSeconds, endSeconds) {
                 continue;
             }
 
-            var s = parseFloat(item.start.seconds);
-            var e = parseFloat(item.end.seconds);
-            if (Math.abs(s - start) <= tolerance && Math.abs(e - end) <= tolerance) {
-                return item;
+            var score = _gridMaker_matchScore(item, vt, targetStart, targetEnd, targetDuration, targetTrack, targetName);
+            if (score < bestScore) {
+                bestScore = score;
+                bestItem = item;
             }
         }
     }
 
-    return null;
+    if (!bestItem) {
+        return null;
+    }
+
+    return bestItem;
+}
+
+function _gridMaker_matchScore(item, itemTrackIndex, targetStart, targetEnd, targetDuration, targetTrack, targetName) {
+    var itemStart = _gridMaker_timeToSeconds(item.start);
+    var itemEnd = _gridMaker_timeToSeconds(item.end);
+    var itemDuration = itemEnd - itemStart;
+
+    if (isNaN(itemStart) || isNaN(itemEnd)) {
+        return Number.MAX_VALUE;
+    }
+
+    var score = 0.0;
+    score += Math.abs(itemStart - targetStart);
+    score += Math.abs(itemEnd - targetEnd);
+    score += Math.abs(itemDuration - targetDuration) * 0.25;
+
+    if (targetTrack >= 0) {
+        score += Math.abs(itemTrackIndex - targetTrack) * 0.05;
+    }
+
+    if (_gridMaker_isQEItemSelected(item)) {
+        score -= 0.2;
+    }
+
+    var itemName = _gridMaker_clipName(item);
+    if (targetName && itemName && targetName === itemName) {
+        score -= 0.1;
+    }
+
+    return score;
+}
+
+function _gridMaker_findTrackIndex(seq, clip) {
+    try {
+        if (!seq || !clip || !clip.parentTrack || !seq.videoTracks) {
+            return -1;
+        }
+
+        for (var i = 0; i < seq.videoTracks.numTracks; i++) {
+            if (seq.videoTracks[i] === clip.parentTrack) {
+                return i;
+            }
+        }
+    } catch (e) {}
+
+    return -1;
+}
+
+function _gridMaker_clipName(clipLike) {
+    if (!clipLike) {
+        return "";
+    }
+
+    var name = "";
+    try {
+        name = clipLike.name || "";
+    } catch (e1) {}
+
+    if (!name) {
+        try {
+            if (clipLike.projectItem) {
+                name = clipLike.projectItem.name || "";
+            }
+        } catch (e2) {}
+    }
+
+    return String(name).toLowerCase();
+}
+
+function _gridMaker_isQEItemSelected(item) {
+    try {
+        if (item && typeof item.isSelected === "function") {
+            return !!item.isSelected();
+        }
+    } catch (e1) {}
+
+    try {
+        if (item && typeof item.getSelected === "function") {
+            return !!item.getSelected();
+        }
+    } catch (e2) {}
+
+    return false;
+}
+
+function _gridMaker_timeToSeconds(timeLike) {
+    var ticksPerSecond = 254016000000.0;
+
+    if (timeLike === null || timeLike === undefined) {
+        return NaN;
+    }
+
+    if (typeof timeLike === "number") {
+        return timeLike;
+    }
+
+    if (typeof timeLike === "string") {
+        var parsed = parseFloat(timeLike);
+        return isNaN(parsed) ? NaN : parsed;
+    }
+
+    try {
+        if (timeLike.seconds !== undefined) {
+            var s = parseFloat(timeLike.seconds);
+            if (!isNaN(s)) {
+                return s;
+            }
+        }
+    } catch (e1) {}
+
+    try {
+        if (timeLike.ticks !== undefined) {
+            var t = parseFloat(timeLike.ticks);
+            if (!isNaN(t)) {
+                return t / ticksPerSecond;
+            }
+        }
+    } catch (e2) {}
+
+    return NaN;
 }
 
 function _gridMaker_ensureEffect(clip, qClip, names) {
