@@ -725,10 +725,12 @@ function _gridMaker_setPlacement(component, scale, x, y, frameW, frameH, debugLi
         _gridMaker_debugPush(debugLines, "No 2D position property found");
         return false;
     }
-    _gridMaker_debugPush(debugLines, "Position property=" + _gridMaker_propertyLabel(position) + " targetAbs=[" + x + "," + y + "]");
+    var currentPos = _gridMaker_readPropertyValue(position);
+    var positionMode = _gridMaker_detectPositionMode(kind, currentPos, frameW, frameH);
+    _gridMaker_debugPush(debugLines, "Position property=" + _gridMaker_propertyLabel(position) + " current=" + _gridMaker_pointToString(currentPos) + " mode=" + positionMode + " targetAbs=[" + x + "," + y + "]");
     _gridMaker_disableTimeVarying(position);
 
-    var candidates = _gridMaker_buildPositionCandidates(kind, x, y, frameW, frameH);
+    var candidates = _gridMaker_buildPositionCandidates(positionMode, x, y, frameW, frameH);
     var positionOk = false;
     for (var i = 0; i < candidates.length; i++) {
         _gridMaker_debugPush(debugLines, "Position candidate #" + (i + 1) + "=" + _gridMaker_pointToString(candidates[i]));
@@ -754,17 +756,59 @@ function _gridMaker_setPlacement(component, scale, x, y, frameW, frameH, debugLi
     return !!scaleOk && !!positionOk;
 }
 
-function _gridMaker_buildPositionCandidates(kind, x, y, frameW, frameH) {
+function _gridMaker_buildPositionCandidates(mode, x, y, frameW, frameH) {
     var absolute = [x, y];
     var centered = [x - (frameW * 0.5), y - (frameH * 0.5)];
+    var normalizedAbs = [x / frameW, y / frameH];
+    var normalizedCentered = [centered[0] / frameW, centered[1] / frameH];
 
+    if (mode === "transform_centered") {
+        return [centered, absolute, normalizedCentered, normalizedAbs];
+    }
+    if (mode === "motion_normalized") {
+        return [normalizedAbs, absolute, centered, normalizedCentered];
+    }
+    if (mode === "motion_pixels") {
+        return [absolute, normalizedAbs, centered, normalizedCentered];
+    }
+    if (mode === "unknown_normalized") {
+        return [normalizedAbs, absolute, centered, normalizedCentered];
+    }
+    return [absolute, centered, normalizedAbs, normalizedCentered];
+}
+
+function _gridMaker_detectPositionMode(kind, currentPos, frameW, frameH) {
     if (kind === "transform") {
-        return [centered, absolute];
+        return "transform_centered";
     }
+
     if (kind === "motion") {
-        return [absolute, centered];
+        if (_gridMaker_isLikelyNormalizedPoint(currentPos)) {
+            return "motion_normalized";
+        }
+        return "motion_pixels";
     }
-    return [absolute, centered];
+
+    if (_gridMaker_isLikelyNormalizedPoint(currentPos)) {
+        return "unknown_normalized";
+    }
+    return "unknown_pixels";
+}
+
+function _gridMaker_isLikelyNormalizedPoint(point) {
+    if (!_gridMaker_isPointValue(point)) {
+        return false;
+    }
+
+    var x = parseFloat(point[0]);
+    var y = parseFloat(point[1]);
+
+    if (!_gridMaker_isFiniteNumber(x) || !_gridMaker_isFiniteNumber(y)) {
+        return false;
+    }
+
+    // Premiere variants can use normalized coordinates around 0..1 for motion.
+    return x >= -0.1 && x <= 1.1 && y >= -0.1 && y <= 1.1;
 }
 
 function _gridMaker_componentKind(component) {
