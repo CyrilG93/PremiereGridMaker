@@ -33,6 +33,7 @@
       "status.err.qe_clip_not_found": "Unable to find selected clip in QE API.",
       "status.err.invalid_sequence_size": "Unable to read sequence frame size.",
       "status.err.placement_apply_failed": "Failed to apply clip placement values.",
+      "status.err.motion_effect_unavailable": "Motion component unavailable on selected clip.",
       "status.err.transform_effect_unavailable": "Transform effect unavailable or failed to add.",
       "status.err.crop_effect_unavailable": "Crop effect unavailable or failed to add.",
       "status.err.exception": "Unexpected error: {message}",

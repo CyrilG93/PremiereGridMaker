@@ -65,12 +65,13 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
 
         var transformComp = _gridMaker_findTransformComponent(clip);
         var motionComp = _gridMaker_findMotionComponent(clip);
-        var placementComp = motionComp || transformComp;
+        var placementComp = motionComp;
         var cropComp = _gridMaker_findCropComponent(clip);
         dbg("Components pre-check placement=" + _gridMaker_componentLabel(placementComp) + " transform=" + _gridMaker_componentLabel(transformComp) + " motion=" + _gridMaker_componentLabel(motionComp) + " crop=" + _gridMaker_componentLabel(cropComp));
         _gridMaker_dumpPlacementComponents(clip, debugLines, "BEFORE");
 
         var qSeq = null;
+        var qClip = null;
         if (!transformComp || !cropComp || !placementComp) {
             qSeq = qe.project.getActiveSequence();
             if (!qSeq) {
@@ -79,7 +80,7 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
             }
             dbg("QE sequence acquired");
 
-            var qClip = _gridMaker_findQEClip(qSeq, seq, clip);
+            qClip = _gridMaker_findQEClip(qSeq, seq, clip);
             if (!qClip) {
                 dbg("QE clip not found");
                 return _gridMaker_result("ERR", "qe_clip_not_found", null, debugLines);
@@ -96,7 +97,7 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
             }
 
             motionComp = _gridMaker_findMotionComponent(clip);
-            placementComp = motionComp || transformComp;
+            placementComp = motionComp;
             dbg("Placement component after ensure=" + _gridMaker_componentLabel(placementComp));
         }
 
@@ -104,17 +105,16 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
             dbg("Placement component unavailable");
             return _gridMaker_result("ERR", "transform_effect_unavailable", null, debugLines);
         }
+        if (!placementComp) {
+            dbg("Motion component unavailable");
+            return _gridMaker_result("ERR", "motion_effect_unavailable", null, debugLines);
+        }
         if (!cropComp) {
             dbg("Crop component unavailable");
             return _gridMaker_result("ERR", "crop_effect_unavailable", null, debugLines);
         }
-        _gridMaker_enableTransformUniformScale(transformComp, debugLines);
         dbg("Transform strategy: ensured but untouched (native defaults preserved)");
-        if (motionComp) {
-            dbg("Placement strategy: Motion (default)");
-        } else {
-            dbg("Placement strategy: Transform fallback (Motion not found)");
-        }
+        dbg("Placement strategy: Motion only");
 
         var frameSize = _gridMaker_getSequenceFrameSize(seq, qSeq);
         if (!frameSize || !_gridMaker_isFiniteNumber(frameSize.width) || !_gridMaker_isFiniteNumber(frameSize.height) || !(frameSize.width > 0) || !(frameSize.height > 0)) {
@@ -170,8 +170,8 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
         cropB = _gridMaker_clamp(cropB * 100.0, 0, 49.5);
 
         visX = 1.0 - (cropL + cropR) / 100.0;
-        // Keep non-cumulative behavior: always compute from clip native 100%.
-        var baseScale = 100.0;
+        var nativeSize = _gridMaker_getClipNativeFrameSize(clip, qClip, debugLines);
+        var baseScale = _gridMaker_computeBaseFitScale(frameW, frameH, nativeSize);
         var scale = baseScale / (cols * visX);
 
         var x = frameW * ((col + 0.5) / cols);
@@ -700,28 +700,117 @@ function _gridMaker_getCurrentScalePercent(component) {
     return NaN;
 }
 
-function _gridMaker_enableTransformUniformScale(transformComp, debugLines) {
-    if (!transformComp) {
-        return;
-    }
-    if (_gridMaker_componentKind(transformComp) !== "transform") {
-        return;
-    }
+function _gridMaker_getClipNativeFrameSize(clip, qClip, debugLines) {
+    var candidates = [];
+    var projectItem = null;
 
-    var uniform = _gridMaker_findProperty(transformComp, ["uniform scale", "echelle uniforme", "uniform"]);
-    if (!uniform) {
-        _gridMaker_debugPush(debugLines, "Transform uniform property not found");
-        return;
-    }
-
-    _gridMaker_disableTimeVarying(uniform);
     try {
-        uniform.setValue(1, true);
-        var readback = _gridMaker_readPropertyValue(uniform);
-        _gridMaker_debugPush(debugLines, "Transform uniform set to ON readback=" + readback);
-    } catch (e1) {
-        _gridMaker_debugPush(debugLines, "Transform uniform set failed: " + e1);
+        projectItem = clip.projectItem;
+    } catch (e1) {}
+
+    if (projectItem) {
+        _gridMaker_pushSizeCandidate(candidates, _gridMaker_toNumber(projectItem.videoFrameWidth), _gridMaker_toNumber(projectItem.videoFrameHeight), "projectItem.videoFrame", debugLines);
+        _gridMaker_pushSizeCandidate(candidates, _gridMaker_toNumber(projectItem.mediaWidth), _gridMaker_toNumber(projectItem.mediaHeight), "projectItem.media", debugLines);
+        _gridMaker_pushSizeCandidate(candidates, _gridMaker_toNumber(projectItem.width), _gridMaker_toNumber(projectItem.height), "projectItem.size", debugLines);
+
+        try {
+            var projectMetadata = projectItem.getProjectMetadata && projectItem.getProjectMetadata();
+            var metaSize = _gridMaker_extractSizeFromMetadata(projectMetadata);
+            if (metaSize) {
+                _gridMaker_pushSizeCandidate(candidates, metaSize.width, metaSize.height, "projectItem.projectMetadata", debugLines);
+            }
+        } catch (e2) {}
+
+        try {
+            var xmpMetadata = projectItem.getXMPMetadata && projectItem.getXMPMetadata();
+            var xmpSize = _gridMaker_extractSizeFromMetadata(xmpMetadata);
+            if (xmpSize) {
+                _gridMaker_pushSizeCandidate(candidates, xmpSize.width, xmpSize.height, "projectItem.xmpMetadata", debugLines);
+            }
+        } catch (e3) {}
     }
+
+    if (qClip) {
+        _gridMaker_pushSizeCandidate(candidates, _gridMaker_toNumber(qClip.sourceWidth), _gridMaker_toNumber(qClip.sourceHeight), "qClip.source", debugLines);
+        _gridMaker_pushSizeCandidate(candidates, _gridMaker_toNumber(qClip.videoFrameWidth), _gridMaker_toNumber(qClip.videoFrameHeight), "qClip.videoFrame", debugLines);
+        _gridMaker_pushSizeCandidate(candidates, _gridMaker_toNumber(qClip.width), _gridMaker_toNumber(qClip.height), "qClip.size", debugLines);
+    }
+
+    if (candidates.length > 0) {
+        _gridMaker_debugPush(debugLines, "Native clip size selected " + candidates[0].width + "x" + candidates[0].height + " from " + candidates[0].source);
+        return { width: candidates[0].width, height: candidates[0].height };
+    }
+
+    _gridMaker_debugPush(debugLines, "Native clip size unavailable, fallback baseScale=100");
+    return null;
+}
+
+function _gridMaker_computeBaseFitScale(frameW, frameH, nativeSize) {
+    if (!nativeSize || !_gridMaker_isReasonableFrameSize(nativeSize.width, nativeSize.height)) {
+        return 100.0;
+    }
+
+    var sx = frameW / nativeSize.width;
+    var sy = frameH / nativeSize.height;
+    var fitScale = Math.max(sx, sy) * 100.0;
+    if (!_gridMaker_isFiniteNumber(fitScale) || fitScale <= 0) {
+        return 100.0;
+    }
+    return fitScale;
+}
+
+function _gridMaker_pushSizeCandidate(candidates, width, height, source, debugLines) {
+    if (!_gridMaker_isReasonableFrameSize(width, height)) {
+        return;
+    }
+    candidates.push({ width: width, height: height, source: source });
+    _gridMaker_debugPush(debugLines, "Native size candidate " + width + "x" + height + " from " + source);
+}
+
+function _gridMaker_extractSizeFromMetadata(text) {
+    if (!text || typeof text !== "string") {
+        return null;
+    }
+
+    var inlinePair = /([0-9]{2,5})\s*[xX]\s*([0-9]{2,5})/.exec(text);
+    if (inlinePair) {
+        var pW = _gridMaker_toNumber(inlinePair[1]);
+        var pH = _gridMaker_toNumber(inlinePair[2]);
+        if (_gridMaker_isReasonableFrameSize(pW, pH)) {
+            return { width: pW, height: pH };
+        }
+    }
+
+    var width = _gridMaker_findFirstNumericMatch(text, [
+        /Column\.Intrinsic\.(?:Media|Video)Width[^0-9]{0,24}([0-9]{2,5})/i,
+        /(?:Media|Video|Frame|Source)Width[^0-9]{0,24}([0-9]{2,5})/i,
+        /\bwidth\b[^0-9]{0,24}([0-9]{2,5})/i
+    ]);
+    var height = _gridMaker_findFirstNumericMatch(text, [
+        /Column\.Intrinsic\.(?:Media|Video)Height[^0-9]{0,24}([0-9]{2,5})/i,
+        /(?:Media|Video|Frame|Source)Height[^0-9]{0,24}([0-9]{2,5})/i,
+        /\bheight\b[^0-9]{0,24}([0-9]{2,5})/i
+    ]);
+
+    if (_gridMaker_isReasonableFrameSize(width, height)) {
+        return { width: width, height: height };
+    }
+
+    return null;
+}
+
+function _gridMaker_findFirstNumericMatch(text, patterns) {
+    for (var i = 0; i < patterns.length; i++) {
+        var match = patterns[i].exec(text);
+        if (!match || match.length < 2) {
+            continue;
+        }
+        var value = _gridMaker_toNumber(match[1]);
+        if (_gridMaker_isFiniteNumber(value)) {
+            return value;
+        }
+    }
+    return NaN;
 }
 
 function _gridMaker_setPlacement(component, scale, x, y, frameW, frameH, debugLines) {
