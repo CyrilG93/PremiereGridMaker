@@ -11,7 +11,7 @@
     <header class="app-header">
       <div class="title-wrap">
         <h1 data-i18n="app.title">Grid Maker</h1>
-        <span id="appVersion" class="app-version">V1.0.0</span>
+        <span id="appVersion" class="app-version">V1.0.1</span>
       </div>
       <div class="lang-picker">
         <select id="languageSelect" aria-label="Language"></select>
@@ -19,8 +19,7 @@
     </header>
 
     <section id="updateBanner" class="update-banner" hidden>
-      <span id="updateText"></span>
-      <a id="updateLink" class="update-link" href="#" target="_blank" rel="noopener" data-i18n="action.downloadUpdate">Download update</a>
+      <a id="updateLink" class="update-link" href="#" target="_blank" rel="noopener" data-i18n="update.download_notice">New update available (vX.X.X), click here to download.</a>
     </section>
 
     <section class="panel">
@@ -57,8 +56,6 @@
       </div>
       <div id="gridPreview" class="grid-preview" aria-label="Grid"></div>
     </section>
-
-    <div id="status" class="status" data-i18n="status.ready">Ready.</div>
 
     <details id="debugPanel" class="panel debug-panel">
       <summary class="debug-summary">

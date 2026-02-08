@@ -4,7 +4,7 @@
   var cep = window.__adobe_cep__ || null;
   var csInterface = (typeof CSInterface !== "undefined") ? new CSInterface() : null;
   var i18n = window.PGM_I18N || { defaultLocale: "en", locales: {} };
-  var APP_VERSION = "1.0.0";
+  var APP_VERSION = "1.0.1";
   var RELEASE_API_URL = "https://api.github.com/repos/CyrilG93/PremiereGridMaker/releases/latest";
 
   var state = {
@@ -43,7 +43,6 @@
   var debugLog = document.getElementById("debugLog");
   var appVersion = document.getElementById("appVersion");
   var updateBanner = document.getElementById("updateBanner");
-  var updateText = document.getElementById("updateText");
   var updateLink = document.getElementById("updateLink");
 
   function getClockStamp() {
@@ -128,6 +127,9 @@
   }
 
   function setStatusText(text, kind) {
+    if (!status) {
+      return;
+    }
     status.className = "status" + (kind ? " " + kind : "");
     status.textContent = text;
   }
@@ -201,39 +203,39 @@
         }
       }
     }
-    if (release && release.zipball_url) {
-      return release.zipball_url;
-    }
     return "";
   }
 
   function refreshUpdateBanner() {
-    if (!updateBanner || !updateText || !updateLink) {
+    if (!updateBanner || !updateLink) {
       return;
     }
 
     if (!updateState.visible || !updateState.latest || !updateState.downloadUrl) {
       updateBanner.hidden = true;
+      updateLink.href = "#";
       return;
     }
 
     updateBanner.hidden = false;
-    if (hasText("update.available")) {
-      updateText.textContent = t("update.available", {
-        current: updateState.current,
-        latest: updateState.latest
-      });
-    } else {
-      updateText.textContent = "Update available: v" + updateState.latest + " (installed v" + updateState.current + ")";
-    }
+    updateLink.textContent = hasText("update.download_notice")
+      ? t("update.download_notice", { latest: updateState.latest, current: updateState.current })
+      : ("New update available (v" + updateState.latest + "), click here to download.");
     updateLink.href = updateState.downloadUrl;
   }
 
   function checkForUpdates() {
     if (!window.fetch) {
       appendDebug("UPDATE> fetch unavailable in CEP runtime");
+      updateState.visible = false;
+      refreshUpdateBanner();
       return;
     }
+
+    updateState.visible = false;
+    updateState.latest = "";
+    updateState.downloadUrl = "";
+    refreshUpdateBanner();
 
     appendDebug("UPDATE> checking latest release");
     window.fetch(RELEASE_API_URL, { cache: "no-store" }).then(function (response) {
@@ -243,13 +245,23 @@
       return response.json();
     }).then(function (release) {
       var latest = normalizeVersion(release && release.tag_name);
+      var current = normalizeVersion(APP_VERSION);
       if (!latest) {
         appendDebug("UPDATE> latest release tag missing/invalid");
+        updateState.visible = false;
+        refreshUpdateBanner();
         return;
       }
 
-      if (compareVersions(latest, APP_VERSION) <= 0) {
-        appendDebug("UPDATE> up to date (local v" + APP_VERSION + ", latest v" + latest + ")");
+      if (!current) {
+        appendDebug("UPDATE> current app version invalid");
+        updateState.visible = false;
+        refreshUpdateBanner();
+        return;
+      }
+
+      if (latest === current || compareVersions(latest, current) !== 1) {
+        appendDebug("UPDATE> up to date (local v" + current + ", latest v" + latest + ")");
         updateState.visible = false;
         refreshUpdateBanner();
         return;
@@ -258,17 +270,49 @@
       var zipUrl = resolveReleaseZipUrl(release);
       if (!zipUrl) {
         appendDebug("UPDATE> newer version found but no zip URL available");
+        updateState.visible = false;
+        refreshUpdateBanner();
         return;
       }
 
       updateState.visible = true;
       updateState.latest = latest;
+      updateState.current = current;
       updateState.downloadUrl = zipUrl;
       refreshUpdateBanner();
       appendDebug("UPDATE> update available v" + latest + " zip=" + zipUrl);
     }).catch(function (err) {
+      updateState.visible = false;
+      refreshUpdateBanner();
       appendDebug("UPDATE> check failed: " + err);
     });
+  }
+
+  function openExternalUrl(url) {
+    if (!url) {
+      return false;
+    }
+
+    try {
+      if (csInterface && typeof csInterface.openURLInDefaultBrowser === "function") {
+        csInterface.openURLInDefaultBrowser(url);
+        return true;
+      }
+    } catch (e1) {}
+
+    try {
+      if (cep && cep.util && typeof cep.util.openURLInDefaultBrowser === "function") {
+        cep.util.openURLInDefaultBrowser(url);
+        return true;
+      }
+    } catch (e2) {}
+
+    try {
+      window.open(url, "_blank", "noopener");
+      return true;
+    } catch (e3) {}
+
+    return false;
   }
 
   function parseRatio(value) {
@@ -650,8 +694,13 @@
   }
 
   if (updateLink) {
-    updateLink.addEventListener("click", function () {
-      appendDebug("UI> update download clicked: " + updateLink.href);
+    updateLink.addEventListener("click", function (event) {
+      event.preventDefault();
+      var url = updateState.downloadUrl || updateLink.href || "";
+      appendDebug("UI> update download clicked: " + url);
+      if (!openExternalUrl(url)) {
+        appendDebug("UI> failed to open update URL");
+      }
     });
   }
 
