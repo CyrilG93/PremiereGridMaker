@@ -1858,6 +1858,69 @@ function _gridMaker_serializeDetails(details) {
     return parts.join("&");
 }
 
+function _gridMaker_isTrustedReleaseZipUrl(url) {
+    if (!url) {
+        return false;
+    }
+    var raw = String(url);
+    return /^https:\/\/github\.com\/CyrilG93\/PremiereGridMaker\/releases\/download\/v[0-9]+\.[0-9]+\.[0-9]+\/[^?#]+\.zip$/i.test(raw);
+}
+
+function _gridMaker_escapeWindowsArg(value) {
+    return String(value).replace(/"/g, "\"\"");
+}
+
+function _gridMaker_escapePosixArg(value) {
+    return String(value).replace(/(["\\`$])/g, "\\$1");
+}
+
+function gridMaker_openExternalUrl(url) {
+    var debugLines = [];
+    function dbg(message) {
+        _gridMaker_debugPush(debugLines, message);
+    }
+
+    try {
+        var targetUrl = String(url || "");
+        dbg("OPEN-URL input=" + targetUrl);
+
+        if (!_gridMaker_isTrustedReleaseZipUrl(targetUrl)) {
+            dbg("OPEN-URL rejected (untrusted url)");
+            return _gridMaker_result("ERR", "invalid_update_url", { url: targetUrl }, debugLines);
+        }
+
+        var os = "";
+        try {
+            os = $.os ? String($.os).toLowerCase() : "";
+        } catch (eOs) {}
+        dbg("OPEN-URL os=" + os);
+
+        var cmd = "";
+        if (os.indexOf("windows") !== -1) {
+            cmd = 'cmd.exe /c start "" "' + _gridMaker_escapeWindowsArg(targetUrl) + '"';
+        } else if (os.indexOf("mac") !== -1) {
+            cmd = 'open "' + _gridMaker_escapePosixArg(targetUrl) + '"';
+        } else {
+            cmd = 'xdg-open "' + _gridMaker_escapePosixArg(targetUrl) + '"';
+        }
+        dbg("OPEN-URL cmd=" + cmd);
+
+        var output = "";
+        try {
+            output = system.callSystem(cmd);
+        } catch (eCall) {
+            dbg("OPEN-URL callSystem exception=" + eCall);
+            return _gridMaker_result("ERR", "open_url_failed", { message: eCall }, debugLines);
+        }
+        dbg("OPEN-URL result=" + output);
+
+        return _gridMaker_result("OK", "url_opened", { url: targetUrl }, debugLines);
+    } catch (e) {
+        dbg("OPEN-URL exception=" + e);
+        return _gridMaker_result("ERR", "open_url_exception", { message: e }, debugLines);
+    }
+}
+
 function gridMaker_ping() {
     return _gridMaker_result("OK", "pong");
 }

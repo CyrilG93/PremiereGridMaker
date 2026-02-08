@@ -4,7 +4,7 @@
   var cep = window.__adobe_cep__ || null;
   var csInterface = (typeof CSInterface !== "undefined") ? new CSInterface() : null;
   var i18n = window.PGM_I18N || { defaultLocale: "en", locales: {} };
-  var APP_VERSION = "1.0.1";
+  var APP_VERSION = "1.0.2";
   var RELEASE_API_URL = "https://api.github.com/repos/CyrilG93/PremiereGridMaker/releases/latest";
 
   var state = {
@@ -206,6 +206,16 @@
     return "";
   }
 
+  function isTrustedReleaseZipUrl(url) {
+    var raw = String(url || "");
+    return /^https:\/\/github\.com\/CyrilG93\/PremiereGridMaker\/releases\/download\/v[0-9]+\.[0-9]+\.[0-9]+\/[^?#]+\.zip$/i.test(raw);
+  }
+
+  function quoteForEvalScript(value) {
+    var s = String(value || "");
+    return "'" + s.replace(/\\/g, "\\\\").replace(/'/g, "\\'") + "'";
+  }
+
   function refreshUpdateBanner() {
     if (!updateBanner || !updateLink) {
       return;
@@ -289,30 +299,43 @@
   }
 
   function openExternalUrl(url) {
-    if (!url) {
-      return false;
+    if (!url || !isTrustedReleaseZipUrl(url)) {
+      appendDebug("UI> rejected untrusted update URL: " + url);
+      return;
     }
 
+    var script = "gridMaker_openExternalUrl(" + quoteForEvalScript(url) + ")";
+    callHost(script, function (result) {
+      appendDebug("HOST< raw(open-url): " + (result || "<empty>"));
+      var parsed = parseHostResponse(result);
+      appendHostDebug(parsed.hostDebug);
+      if (parsed.kind === "ok") {
+        appendDebug("UI> update URL opened via host");
+        return;
+      }
+      appendDebug("UI> host open-url failed, trying CEP fallback");
+      openExternalUrlFallback(url);
+    });
+  }
+
+  function openExternalUrlFallback(url) {
     try {
       if (csInterface && typeof csInterface.openURLInDefaultBrowser === "function") {
         csInterface.openURLInDefaultBrowser(url);
-        return true;
+        appendDebug("UI> update URL opened via CSInterface");
+        return;
       }
     } catch (e1) {}
 
     try {
       if (cep && cep.util && typeof cep.util.openURLInDefaultBrowser === "function") {
         cep.util.openURLInDefaultBrowser(url);
-        return true;
+        appendDebug("UI> update URL opened via cep.util");
+        return;
       }
     } catch (e2) {}
 
-    try {
-      window.open(url, "_blank", "noopener");
-      return true;
-    } catch (e3) {}
-
-    return false;
+    appendDebug("UI> failed to open update URL");
   }
 
   function parseRatio(value) {
@@ -698,9 +721,7 @@
       event.preventDefault();
       var url = updateState.downloadUrl || updateLink.href || "";
       appendDebug("UI> update download clicked: " + url);
-      if (!openExternalUrl(url)) {
-        appendDebug("UI> failed to open update URL");
-      }
+      openExternalUrl(url);
     });
   }
 
