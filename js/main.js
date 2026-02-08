@@ -4,6 +4,8 @@
   var cep = window.__adobe_cep__ || null;
   var csInterface = (typeof CSInterface !== "undefined") ? new CSInterface() : null;
   var i18n = window.PGM_I18N || { defaultLocale: "en", locales: {} };
+  var APP_VERSION = "1.0.0";
+  var RELEASE_API_URL = "https://api.github.com/repos/CyrilG93/PremiereGridMaker/releases/latest";
 
   var state = {
     rows: 2,
@@ -21,6 +23,13 @@
     kind: ""
   };
 
+  var updateState = {
+    visible: false,
+    current: APP_VERSION,
+    latest: "",
+    downloadUrl: ""
+  };
+
   var rowsRange = document.getElementById("rows");
   var rowsNumber = document.getElementById("rowsNumber");
   var colsRange = document.getElementById("cols");
@@ -32,6 +41,10 @@
   var languageSelect = document.getElementById("languageSelect");
   var copyDebugBtn = document.getElementById("copyDebugBtn");
   var debugLog = document.getElementById("debugLog");
+  var appVersion = document.getElementById("appVersion");
+  var updateBanner = document.getElementById("updateBanner");
+  var updateText = document.getElementById("updateText");
+  var updateLink = document.getElementById("updateLink");
 
   function getClockStamp() {
     var now = new Date();
@@ -149,6 +162,115 @@
     setStatusText(statusState.vars.message || "", statusState.kind);
   }
 
+  function normalizeVersion(raw) {
+    var clean = String(raw || "").trim().replace(/^v/i, "");
+    var match = clean.match(/^(\d+)\.(\d+)\.(\d+)/);
+    if (!match) {
+      return "";
+    }
+    return match[1] + "." + match[2] + "." + match[3];
+  }
+
+  function compareVersions(a, b) {
+    var pa = normalizeVersion(a).split(".");
+    var pb = normalizeVersion(b).split(".");
+    if (pa.length !== 3 || pb.length !== 3) {
+      return 0;
+    }
+    for (var i = 0; i < 3; i += 1) {
+      var da = parseInt(pa[i], 10);
+      var db = parseInt(pb[i], 10);
+      if (da > db) {
+        return 1;
+      }
+      if (da < db) {
+        return -1;
+      }
+    }
+    return 0;
+  }
+
+  function resolveReleaseZipUrl(release) {
+    if (release && release.assets && release.assets.length) {
+      for (var i = 0; i < release.assets.length; i += 1) {
+        var asset = release.assets[i];
+        var name = String(asset.name || "").toLowerCase();
+        var url = asset.browser_download_url || "";
+        if (name.indexOf(".zip") !== -1 && url) {
+          return url;
+        }
+      }
+    }
+    if (release && release.zipball_url) {
+      return release.zipball_url;
+    }
+    return "";
+  }
+
+  function refreshUpdateBanner() {
+    if (!updateBanner || !updateText || !updateLink) {
+      return;
+    }
+
+    if (!updateState.visible || !updateState.latest || !updateState.downloadUrl) {
+      updateBanner.hidden = true;
+      return;
+    }
+
+    updateBanner.hidden = false;
+    if (hasText("update.available")) {
+      updateText.textContent = t("update.available", {
+        current: updateState.current,
+        latest: updateState.latest
+      });
+    } else {
+      updateText.textContent = "Update available: v" + updateState.latest + " (installed v" + updateState.current + ")";
+    }
+    updateLink.href = updateState.downloadUrl;
+  }
+
+  function checkForUpdates() {
+    if (!window.fetch) {
+      appendDebug("UPDATE> fetch unavailable in CEP runtime");
+      return;
+    }
+
+    appendDebug("UPDATE> checking latest release");
+    window.fetch(RELEASE_API_URL, { cache: "no-store" }).then(function (response) {
+      if (!response.ok) {
+        throw new Error("HTTP " + response.status);
+      }
+      return response.json();
+    }).then(function (release) {
+      var latest = normalizeVersion(release && release.tag_name);
+      if (!latest) {
+        appendDebug("UPDATE> latest release tag missing/invalid");
+        return;
+      }
+
+      if (compareVersions(latest, APP_VERSION) <= 0) {
+        appendDebug("UPDATE> up to date (local v" + APP_VERSION + ", latest v" + latest + ")");
+        updateState.visible = false;
+        refreshUpdateBanner();
+        return;
+      }
+
+      var zipUrl = resolveReleaseZipUrl(release);
+      if (!zipUrl) {
+        appendDebug("UPDATE> newer version found but no zip URL available");
+        return;
+      }
+
+      updateState.visible = true;
+      updateState.latest = latest;
+      updateState.downloadUrl = zipUrl;
+      refreshUpdateBanner();
+      appendDebug("UPDATE> update available v" + latest + " zip=" + zipUrl);
+    }).catch(function (err) {
+      appendDebug("UPDATE> check failed: " + err);
+    });
+  }
+
   function parseRatio(value) {
     var parts = value.split(":");
     if (parts.length !== 2) {
@@ -258,7 +380,7 @@
 
   function parseHostResponse(result) {
     if (!result) {
-      return { kind: "err", key: "status.err.empty_response", vars: {}, hostDebug: "" };
+      return { kind: "err", key: "status.err.empty_response", vars: {}, hostDebug: "", code: "" };
     }
 
     var parts = result.split("|");
@@ -272,8 +394,10 @@
         if (code === "cell_applied") {
           return {
             kind: "ok",
-            key: "status.ok.cell_applied",
-            vars: {
+            key: "status.ok.generic",
+            vars: {},
+            code: code,
+            details: {
               row: details.row || "",
               col: details.col || "",
               scale: details.scale || ""
@@ -281,7 +405,7 @@
             hostDebug: hostDebug
           };
         }
-        return { kind: "ok", key: "status.ok.generic", vars: {}, hostDebug: hostDebug };
+        return { kind: "ok", key: "status.ok.generic", vars: {}, hostDebug: hostDebug, code: code };
       }
 
       if (code === "exception") {
@@ -289,7 +413,8 @@
           kind: "err",
           key: "status.err.exception",
           vars: { message: details.message || "" },
-          hostDebug: hostDebug
+          hostDebug: hostDebug,
+          code: code
         };
       }
 
@@ -297,19 +422,20 @@
         kind: "err",
         key: hasText("status.err." + code) ? ("status.err." + code) : "status.err.unknown",
         vars: details,
-        hostDebug: hostDebug
+        hostDebug: hostDebug,
+        code: code
       };
     }
 
     if (result.indexOf("ERROR:") === 0) {
-      return { kind: "err", raw: result, hostDebug: "" };
+      return { kind: "err", raw: result, hostDebug: "", code: "" };
     }
 
     if (result.indexOf("OK:") === 0) {
-      return { kind: "ok", raw: result, hostDebug: "" };
+      return { kind: "ok", raw: result, hostDebug: "", code: "" };
     }
 
-    return { kind: "", raw: result, hostDebug: "" };
+    return { kind: "", raw: result, hostDebug: "", code: "" };
   }
 
   function applyCell(row, col) {
@@ -333,6 +459,14 @@
       appendDebug("HOST< raw: " + (result || "<empty>"));
       var parsed = parseHostResponse(result);
       appendHostDebug(parsed.hostDebug);
+
+      if (parsed.kind === "ok" && parsed.code === "cell_applied" && parsed.details) {
+        appendDebug(
+          "UI> applied cell row=" + parsed.details.row +
+          " col=" + parsed.details.col +
+          " scale=" + parsed.details.scale + "%"
+        );
+      }
 
       if (parsed.raw) {
         setStatusRaw(parsed.raw, parsed.kind);
@@ -422,6 +556,7 @@
     renderStaticTexts();
     renderGrid();
     refreshStatus();
+    refreshUpdateBanner();
   }
 
   syncValue(rowsRange, rowsNumber, function (v) {
@@ -510,8 +645,19 @@
     }
   });
 
+  if (appVersion) {
+    appVersion.textContent = "V" + APP_VERSION;
+  }
+
+  if (updateLink) {
+    updateLink.addEventListener("click", function () {
+      appendDebug("UI> update download clicked: " + updateLink.href);
+    });
+  }
+
   renderLanguageOptions();
   setLocale(state.locale);
   setStatusKey("status.ready", {}, "");
   appendDebug("INIT> panel ready");
+  checkForUpdates();
 })();

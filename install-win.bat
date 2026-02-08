@@ -92,7 +92,7 @@ if "%SKIP_DEBUG%"=="1" (
 ) else (
     echo CEP debug mode enabled for CSXS.8 to CSXS.11 ^(HKCU^).
 )
-echo Open Premiere Pro: Window ^> Extensions ^(Legacy^) ^> Grid Maker
+echo Open Premiere Pro: Window ^> Extensions ^> Grid Maker
 set "EXIT_CODE=0"
 goto finish
 

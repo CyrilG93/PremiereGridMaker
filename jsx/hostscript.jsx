@@ -63,10 +63,10 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
         var clip = videoClips[0];
         dbg("Clip name=" + _gridMaker_clipName(clip) + " start=" + _gridMaker_timeToSeconds(clip.start) + " end=" + _gridMaker_timeToSeconds(clip.end));
 
-        var transformComp = _gridMaker_findTransformComponent(clip);
+        var transformComp = _gridMaker_findManagedTransformComponent(clip);
         var motionComp = _gridMaker_findMotionComponent(clip);
         var placementComp = motionComp;
-        var cropComp = _gridMaker_findCropComponent(clip);
+        var cropComp = _gridMaker_findManagedCropComponent(clip);
         dbg("Components pre-check placement=" + _gridMaker_componentLabel(placementComp) + " transform=" + _gridMaker_componentLabel(transformComp) + " motion=" + _gridMaker_componentLabel(motionComp) + " crop=" + _gridMaker_componentLabel(cropComp));
         _gridMaker_dumpPlacementComponents(clip, debugLines, "BEFORE");
 
@@ -87,24 +87,29 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
             }
             dbg("QE clip found");
 
-            if (!transformComp) {
-                transformComp = _gridMaker_ensureEffect(clip, qClip, _gridMaker_transformEffectLookupNames(), _gridMaker_findTransformComponent);
-                dbg("Transform component after ensure=" + _gridMaker_componentLabel(transformComp));
-            }
-            if (!cropComp) {
-                cropComp = _gridMaker_ensureEffect(clip, qClip, _gridMaker_cropEffectLookupNames(), _gridMaker_findCropComponent);
-                dbg("Crop component after ensure=" + _gridMaker_componentLabel(cropComp));
-            }
+            transformComp = _gridMaker_ensureManagedEffect(
+                clip,
+                qClip,
+                "transform",
+                _gridMaker_transformEffectLookupNames(),
+                debugLines
+            );
+            dbg("Transform component after ensure=" + _gridMaker_componentLabel(transformComp));
+
+            cropComp = _gridMaker_ensureManagedEffect(
+                clip,
+                qClip,
+                "crop",
+                _gridMaker_cropEffectLookupNames(),
+                debugLines
+            );
+            dbg("Crop component after ensure=" + _gridMaker_componentLabel(cropComp));
 
             motionComp = _gridMaker_findMotionComponent(clip);
             placementComp = motionComp;
             dbg("Placement component after ensure=" + _gridMaker_componentLabel(placementComp));
         }
 
-        if (!transformComp) {
-            dbg("Placement component unavailable");
-            return _gridMaker_result("ERR", "transform_effect_unavailable", null, debugLines);
-        }
         if (!placementComp) {
             dbg("Motion component unavailable");
             return _gridMaker_result("ERR", "motion_effect_unavailable", null, debugLines);
@@ -113,7 +118,11 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
             dbg("Crop component unavailable");
             return _gridMaker_result("ERR", "crop_effect_unavailable", null, debugLines);
         }
-        dbg("Transform strategy: ensured but untouched (native defaults preserved)");
+        if (!transformComp) {
+            dbg("Transform effect unavailable; continuing with Motion+Crop only");
+        } else {
+            dbg("Transform strategy: added/kept as neutral effect (no parameter writes)");
+        }
         dbg("Placement strategy: Motion only");
 
         var frameSize = _gridMaker_getSequenceFrameSize(seq, qSeq);
@@ -382,6 +391,614 @@ function _gridMaker_ensureEffect(clip, qClip, lookupNames, resolverFn) {
     return resolverFn(clip);
 }
 
+function _gridMaker_findManagedEffectComponent(clip, type) {
+    var list = _gridMaker_getTypeComponents(clip, type);
+    if (!list || list.length < 1) {
+        return null;
+    }
+    // Keep a stable "managed" pick without relying on rename APIs.
+    return list[list.length - 1];
+}
+
+function _gridMaker_findManagedTransformComponent(clip) {
+    return _gridMaker_findManagedEffectComponent(clip, "transform");
+}
+
+function _gridMaker_findManagedCropComponent(clip) {
+    return _gridMaker_findManagedEffectComponent(clip, "crop");
+}
+
+function _gridMaker_ensureManagedEffect(clip, qClip, type, lookupNames, debugLines) {
+    var existing = _gridMaker_findManagedEffectComponent(clip, type);
+    if (existing) {
+        _gridMaker_debugPush(debugLines, type + " managed component found: " + _gridMaker_componentLabel(existing));
+        return existing;
+    }
+
+    var beforeType = _gridMaker_getTypeComponents(clip, type);
+    _gridMaker_debugPush(debugLines, type + " components before ensure=" + beforeType.length);
+
+    for (var i = 0; i < lookupNames.length; i++) {
+        var effectName = lookupNames[i];
+        var fx = null;
+        try {
+            fx = qe.project.getVideoEffectByName(effectName);
+        } catch (e1) {}
+        if (!fx) {
+            continue;
+        }
+
+        try {
+            qClip.addVideoEffect(fx);
+        } catch (e2) {
+            continue;
+        }
+
+        var afterType = _gridMaker_getTypeComponents(clip, type);
+        var candidate = _gridMaker_pickNewComponent(beforeType, afterType);
+        _gridMaker_debugPush(debugLines, "Added " + type + " via '" + effectName + "' candidate=" + _gridMaker_componentLabel(candidate));
+
+        if (candidate) {
+            return candidate;
+        }
+        if (afterType.length > beforeType.length) {
+            return afterType[afterType.length - 1];
+        }
+        beforeType = afterType;
+    }
+
+    var fallback = _gridMaker_findManagedEffectComponent(clip, type);
+    if (fallback) {
+        _gridMaker_debugPush(debugLines, type + " managed fallback found: " + _gridMaker_componentLabel(fallback));
+    }
+    return fallback;
+}
+
+function _gridMaker_effectTagSuffix() {
+    return " (Grid Maker)";
+}
+
+function _gridMaker_hasGridMakerTag(name) {
+    if (!name) {
+        return false;
+    }
+    var suffix = _gridMaker_effectTagSuffix().toLowerCase();
+    var lower = String(name).toLowerCase();
+    return lower.indexOf(suffix) !== -1;
+}
+
+function _gridMaker_stripGridMakerTag(name) {
+    if (!name) {
+        return "";
+    }
+    var suffix = _gridMaker_effectTagSuffix();
+    var trimmed = String(name);
+    var idx = trimmed.lastIndexOf(suffix);
+    if (idx === -1) {
+        return trimmed;
+    }
+    return trimmed.substring(0, idx);
+}
+
+function _gridMaker_componentDisplayName(component) {
+    if (!component) {
+        return "";
+    }
+
+    try {
+        if (component.displayName) {
+            return String(component.displayName);
+        }
+    } catch (e1) {}
+
+    try {
+        if (component.name) {
+            return String(component.name);
+        }
+    } catch (e2) {}
+
+    return "";
+}
+
+function _gridMaker_transformLabelBase() {
+    return "Transform";
+}
+
+function _gridMaker_cropLabelBase() {
+    return "Crop";
+}
+
+function _gridMaker_defaultLabelForType(type) {
+    if (type === "transform") {
+        return _gridMaker_transformLabelBase();
+    }
+    if (type === "crop") {
+        return _gridMaker_cropLabelBase();
+    }
+    return "Effect";
+}
+
+function _gridMaker_componentMatchesType(component, type) {
+    if (!component) {
+        return false;
+    }
+
+    var displayName = "";
+    var matchName = "";
+    try {
+        displayName = component.displayName ? component.displayName.toLowerCase() : "";
+    } catch (e1) {}
+    try {
+        matchName = component.matchName ? component.matchName.toLowerCase() : "";
+    } catch (e2) {}
+
+    if (type === "transform") {
+        return _gridMaker_componentMatchScore(
+            displayName,
+            matchName,
+            ["transform", "transformation", "trasform", "transformar", "transformier"],
+            ["adbe transform", "adbe geometry2", "ae.adbe geometry2"]
+        ) >= 0;
+    }
+
+    if (type === "crop") {
+        return _gridMaker_componentMatchScore(
+            displayName,
+            matchName,
+            ["crop", "recadr", "recortar", "ritagli", "freistell"],
+            ["adbe crop", "adbe aecrop", "ae.adbe crop", "ae.adbe aecrop"]
+        ) >= 0;
+    }
+
+    return false;
+}
+
+function _gridMaker_getTypeComponents(clip, type) {
+    var out = [];
+    if (!clip || !clip.components) {
+        return out;
+    }
+
+    for (var i = 0; i < clip.components.numItems; i++) {
+        var comp = clip.components[i];
+        if (!comp) {
+            continue;
+        }
+        if (_gridMaker_componentMatchesType(comp, type)) {
+            out.push(comp);
+        }
+    }
+
+    return out;
+}
+
+function _gridMaker_findTaggedComponentByType(clip, type) {
+    var comps = _gridMaker_getTypeComponents(clip, type);
+    for (var i = 0; i < comps.length; i++) {
+        var name = _gridMaker_componentDisplayName(comps[i]);
+        if (_gridMaker_hasGridMakerTag(name)) {
+            return comps[i];
+        }
+    }
+    return null;
+}
+
+function _gridMaker_findTaggedTransformComponent(clip) {
+    return _gridMaker_findTaggedComponentByType(clip, "transform");
+}
+
+function _gridMaker_findTaggedCropComponent(clip) {
+    return _gridMaker_findTaggedComponentByType(clip, "crop");
+}
+
+function _gridMaker_tryTagComponent(component, type, debugLines) {
+    if (!component) {
+        return false;
+    }
+
+    var currentName = _gridMaker_componentDisplayName(component);
+    if (_gridMaker_hasGridMakerTag(currentName)) {
+        _gridMaker_debugPush(debugLines, "Tag already present on " + type + " component: " + _gridMaker_componentLabel(component));
+        return true;
+    }
+
+    var baseName = _gridMaker_stripGridMakerTag(currentName);
+    if (!baseName) {
+        baseName = _gridMaker_defaultLabelForType(type);
+    }
+    var targetName = baseName + _gridMaker_effectTagSuffix();
+
+    try {
+        component.displayName = targetName;
+    } catch (e1) {}
+    if (_gridMaker_hasGridMakerTag(_gridMaker_componentDisplayName(component))) {
+        _gridMaker_debugPush(debugLines, "Tag set via displayName: " + _gridMaker_componentLabel(component));
+        return true;
+    }
+
+    try {
+        component.name = targetName;
+    } catch (e2) {}
+    if (_gridMaker_hasGridMakerTag(_gridMaker_componentDisplayName(component))) {
+        _gridMaker_debugPush(debugLines, "Tag set via name: " + _gridMaker_componentLabel(component));
+        return true;
+    }
+
+    try {
+        if (typeof component.setName === "function") {
+            component.setName(targetName);
+        }
+    } catch (e3) {}
+    if (_gridMaker_hasGridMakerTag(_gridMaker_componentDisplayName(component))) {
+        _gridMaker_debugPush(debugLines, "Tag set via setName: " + _gridMaker_componentLabel(component));
+        return true;
+    }
+
+    _gridMaker_debugPush(debugLines, "Unable to tag " + type + " component name (API limitation likely): " + _gridMaker_componentLabel(component));
+    return false;
+}
+
+function _gridMaker_qeGetComponentCount(qClip) {
+    if (!qClip) {
+        return 0;
+    }
+    try {
+        if (qClip.numComponents !== undefined) {
+            return parseInt(qClip.numComponents, 10) || 0;
+        }
+    } catch (e1) {}
+    return 0;
+}
+
+function _gridMaker_qeGetComponentAt(qClip, index) {
+    if (!qClip) {
+        return null;
+    }
+    try {
+        if (typeof qClip.getComponentAt === "function") {
+            return qClip.getComponentAt(index);
+        }
+    } catch (e1) {}
+    return null;
+}
+
+function _gridMaker_qeComponentLabel(component) {
+    if (!component) {
+        return "<none>";
+    }
+    var name = "";
+    var matchName = "";
+    try {
+        name = component.name || component.displayName || "";
+    } catch (e1) {}
+    try {
+        matchName = component.matchName || "";
+    } catch (e2) {}
+    return "[" + name + "|" + matchName + "]";
+}
+
+function _gridMaker_qeComponentMatchesType(component, type) {
+    if (!component) {
+        return false;
+    }
+    var name = "";
+    var matchName = "";
+    try {
+        name = (component.name || component.displayName || "").toLowerCase();
+    } catch (e1) {}
+    try {
+        matchName = (component.matchName || "").toLowerCase();
+    } catch (e2) {}
+
+    if (type === "transform") {
+        return _gridMaker_containsAny(matchName, ["adbe geometry", "adbe transform"]) || _gridMaker_containsAny(name, ["transform", "transformation", "trasform"]);
+    }
+    if (type === "crop") {
+        return _gridMaker_containsAny(matchName, ["adbe crop", "adbe aecrop"]) || _gridMaker_containsAny(name, ["crop", "recadr", "recortar", "ritagli"]);
+    }
+    return false;
+}
+
+function _gridMaker_tryTagSingleTypeViaQE(qClip, type, targetName, debugLines) {
+    var count = _gridMaker_qeGetComponentCount(qClip);
+    if (count < 1) {
+        return false;
+    }
+
+    var matches = [];
+    for (var i = 0; i < count; i++) {
+        var qeComp = _gridMaker_qeGetComponentAt(qClip, i);
+        if (!qeComp) {
+            continue;
+        }
+        if (_gridMaker_qeComponentMatchesType(qeComp, type)) {
+            matches.push(qeComp);
+        }
+    }
+
+    if (matches.length !== 1) {
+        _gridMaker_debugPush(debugLines, "QE rename skipped for " + type + ": ambiguous components=" + matches.length);
+        return false;
+    }
+
+    var c = matches[0];
+    try {
+        c.displayName = targetName;
+    } catch (e1) {}
+    try {
+        c.name = targetName;
+    } catch (e2) {}
+    try {
+        if (typeof c.setName === "function") {
+            c.setName(targetName);
+        }
+    } catch (e3) {}
+
+    var label = _gridMaker_qeComponentLabel(c);
+    var ok = _gridMaker_hasGridMakerTag(label);
+    _gridMaker_debugPush(debugLines, "QE rename attempt for " + type + " => " + label + " ok=" + ok);
+    return ok;
+}
+
+function _gridMaker_pickNewComponent(beforeList, afterList) {
+    if (!afterList || afterList.length < 1) {
+        return null;
+    }
+    if (!beforeList || beforeList.length < 1) {
+        return afterList[afterList.length - 1];
+    }
+
+    for (var a = 0; a < afterList.length; a++) {
+        var found = false;
+        for (var b = 0; b < beforeList.length; b++) {
+            if (afterList[a] === beforeList[b]) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            return afterList[a];
+        }
+    }
+
+    return afterList[afterList.length - 1];
+}
+
+function _gridMaker_ensureTaggedEffect(clip, qClip, type, lookupNames, findAnyFn, findTaggedFn, debugLines) {
+    var tagged = findTaggedFn(clip);
+    if (tagged) {
+        _gridMaker_debugPush(debugLines, type + " tagged component found: " + _gridMaker_componentLabel(tagged));
+        return tagged;
+    }
+
+    var beforeType = _gridMaker_getTypeComponents(clip, type);
+    _gridMaker_debugPush(debugLines, type + " components before ensure=" + beforeType.length);
+
+    var addedOnce = false;
+    for (var i = 0; i < lookupNames.length; i++) {
+        var effectName = lookupNames[i];
+        var fx = null;
+        try {
+            fx = qe.project.getVideoEffectByName(effectName);
+        } catch (e1) {}
+        if (!fx) {
+            continue;
+        }
+
+        try {
+            qClip.addVideoEffect(fx);
+        } catch (e2) {
+            continue;
+        }
+
+        var afterType = _gridMaker_getTypeComponents(clip, type);
+        var candidate = _gridMaker_pickNewComponent(beforeType, afterType);
+        if (!candidate) {
+            candidate = findAnyFn(clip);
+        }
+        addedOnce = true;
+        _gridMaker_debugPush(debugLines, "Added " + type + " via '" + effectName + "' candidate=" + _gridMaker_componentLabel(candidate));
+        if (candidate) {
+            var taggedOk = _gridMaker_tryTagComponent(candidate, type, debugLines);
+            if (!taggedOk) {
+                var baseName = _gridMaker_stripGridMakerTag(_gridMaker_componentDisplayName(candidate));
+                if (!baseName) {
+                    baseName = _gridMaker_defaultLabelForType(type);
+                }
+                _gridMaker_tryTagSingleTypeViaQE(qClip, type, baseName + _gridMaker_effectTagSuffix(), debugLines);
+            }
+
+            tagged = findTaggedFn(clip);
+            if (tagged) {
+                return tagged;
+            }
+
+            // Prevent multiple duplicate insertions across localized lookup names.
+            break;
+        }
+        beforeType = afterType;
+    }
+
+    tagged = findTaggedFn(clip);
+    if (tagged) {
+        return tagged;
+    }
+
+    if (addedOnce) {
+        var anyNow = findAnyFn(clip);
+        if (anyNow) {
+            _gridMaker_debugPush(debugLines, type + " added but untaggable; using detected component: " + _gridMaker_componentLabel(anyNow));
+            return anyNow;
+        }
+    }
+
+    var byType = _gridMaker_getTypeComponents(clip, type);
+    if (byType.length === 1) {
+        _gridMaker_debugPush(debugLines, type + " tagging unavailable; using sole " + type + " component safely: " + _gridMaker_componentLabel(byType[0]));
+        return byType[0];
+    }
+
+    _gridMaker_debugPush(debugLines, type + " tagged component unavailable and ambiguous count=" + byType.length);
+    return null;
+}
+
+function _gridMaker_isTruthyToggleValue(value) {
+    if (value === true) {
+        return true;
+    }
+    if (value === false || value === null || value === undefined) {
+        return false;
+    }
+    var n = _gridMaker_toNumber(value);
+    if (_gridMaker_isFiniteNumber(n)) {
+        return n !== 0;
+    }
+    return false;
+}
+
+function _gridMaker_trySetToggleProperty(prop, value, debugLines, label) {
+    if (!prop) {
+        _gridMaker_debugPush(debugLines, "set-toggle skip " + (label || "?") + " missing prop");
+        return false;
+    }
+
+    try {
+        prop.setValue(value, true);
+        var readback = _gridMaker_readPropertyValue(prop);
+        var ok = _gridMaker_isTruthyToggleValue(readback);
+        _gridMaker_debugPush(debugLines, "set-toggle attempt " + (label || "?") + " value=" + value + " readback=" + readback + " ok=" + ok);
+        if (ok) {
+            return true;
+        }
+    } catch (e1) {}
+
+    _gridMaker_disableTimeVarying(prop);
+    try {
+        prop.setValue(value, true);
+        var readback2 = _gridMaker_readPropertyValue(prop);
+        var ok2 = _gridMaker_isTruthyToggleValue(readback2);
+        _gridMaker_debugPush(debugLines, "set-toggle retry " + (label || "?") + " value=" + value + " readback=" + readback2 + " ok=" + ok2);
+        return ok2;
+    } catch (e2) {}
+
+    _gridMaker_debugPush(debugLines, "set-toggle failed " + (label || "?"));
+    return false;
+}
+
+function _gridMaker_enableTransformUniformScale(transformComp, debugLines) {
+    if (!transformComp) {
+        return;
+    }
+
+    var uniform = _gridMaker_findProperty(
+        transformComp,
+        [
+            "uniform scale",
+            "echelle uniforme",
+            "échelle uniforme",
+            "escala uniforme",
+            "scala uniforme",
+            "adbe geometry2-0003"
+        ]
+    );
+
+    if (!uniform) {
+        _gridMaker_debugPush(debugLines, "Transform uniform scale property not found");
+        return;
+    }
+
+    var widthProp = _gridMaker_findProperty(
+        transformComp,
+        [
+            "scale width",
+            "echelle largeur",
+            "échelle largeur",
+            "largeur",
+            "width",
+            "adbe geometry-0002",
+            "adbe geometry2-0002"
+        ],
+        "number"
+    );
+    var heightProp = _gridMaker_findProperty(
+        transformComp,
+        [
+            "scale height",
+            "echelle hauteur",
+            "échelle hauteur",
+            "hauteur",
+            "height",
+            "adbe geometry-0001",
+            "adbe geometry2-0001"
+        ],
+        "number"
+    );
+
+    if (_gridMaker_isTruthyToggleValue(_gridMaker_readPropertyValue(uniform))) {
+        _gridMaker_debugPush(debugLines, "Transform uniform scale already checked; validating linkage");
+        if (_gridMaker_transformUniformLinkIsEffective(uniform, widthProp, heightProp, debugLines)) {
+            return;
+        }
+        _gridMaker_debugPush(debugLines, "Transform uniform linkage not effective despite checked state");
+    }
+
+    var ok = _gridMaker_trySetToggleProperty(uniform, 1, debugLines, "transform.uniformScale=1");
+    if (!ok) {
+        ok = _gridMaker_trySetToggleProperty(uniform, true, debugLines, "transform.uniformScale=true");
+    }
+    if (ok) {
+        // Force a no-op sync pass so both scale axes stay aligned with default-like behavior.
+        _gridMaker_transformSyncScaleAxes(widthProp, heightProp, debugLines);
+        var linked = _gridMaker_transformUniformLinkIsEffective(uniform, widthProp, heightProp, debugLines);
+        _gridMaker_debugPush(debugLines, "Transform uniform scale enforced=" + linked + " readback=" + _gridMaker_readPropertyValue(uniform));
+        return;
+    }
+
+    _gridMaker_debugPush(debugLines, "Transform uniform scale enforcement failed readback=" + _gridMaker_readPropertyValue(uniform));
+}
+
+function _gridMaker_transformSyncScaleAxes(widthProp, heightProp, debugLines) {
+    if (!widthProp || !heightProp) {
+        return;
+    }
+    var w = _gridMaker_toNumber(_gridMaker_readPropertyValue(widthProp));
+    var h = _gridMaker_toNumber(_gridMaker_readPropertyValue(heightProp));
+    var base = 100;
+    if (_gridMaker_isFiniteNumber(w)) {
+        base = w;
+    } else if (_gridMaker_isFiniteNumber(h)) {
+        base = h;
+    }
+    _gridMaker_trySetNumberProperty(widthProp, base, debugLines, "transform.scaleWidth.sync");
+    _gridMaker_trySetNumberProperty(heightProp, base, debugLines, "transform.scaleHeight.sync");
+}
+
+function _gridMaker_transformUniformLinkIsEffective(uniformProp, widthProp, heightProp, debugLines) {
+    if (!uniformProp || !widthProp || !heightProp) {
+        _gridMaker_debugPush(debugLines, "Transform uniform linkage test skipped (missing props)");
+        return _gridMaker_isTruthyToggleValue(_gridMaker_readPropertyValue(uniformProp));
+    }
+
+    var w0 = _gridMaker_toNumber(_gridMaker_readPropertyValue(widthProp));
+    var h0 = _gridMaker_toNumber(_gridMaker_readPropertyValue(heightProp));
+    if (!_gridMaker_isFiniteNumber(w0) || !_gridMaker_isFiniteNumber(h0)) {
+        _gridMaker_debugPush(debugLines, "Transform uniform linkage test skipped (invalid numeric readback)");
+        return _gridMaker_isTruthyToggleValue(_gridMaker_readPropertyValue(uniformProp));
+    }
+
+    var testVal = w0 + 0.1234;
+    _gridMaker_trySetNumberProperty(widthProp, testVal, debugLines, "transform.scaleWidth.linkTest");
+    var h1 = _gridMaker_toNumber(_gridMaker_readPropertyValue(heightProp));
+    var w1 = _gridMaker_toNumber(_gridMaker_readPropertyValue(widthProp));
+    var linked = _gridMaker_isFiniteNumber(h1) && _gridMaker_isFiniteNumber(w1) && Math.abs(h1 - w1) < 0.0001;
+
+    _gridMaker_trySetNumberProperty(widthProp, w0, debugLines, "transform.scaleWidth.restore");
+    _gridMaker_trySetNumberProperty(heightProp, h0, debugLines, "transform.scaleHeight.restore");
+
+    _gridMaker_debugPush(debugLines, "Transform uniform linkage test linked=" + linked + " w1=" + w1 + " h1=" + h1);
+    return linked;
+}
+
 function _gridMaker_transformEffectLookupNames() {
     return [
         "Transform",
@@ -403,7 +1020,8 @@ function _gridMaker_cropEffectLookupNames() {
         "Ritaglia",
         "Freistellen",
         "ADBE Crop",
-        "AE.ADBE Crop"
+        "AE.ADBE Crop",
+        "AE.ADBE AECrop"
     ];
 }
 
