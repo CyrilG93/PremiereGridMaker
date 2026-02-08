@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<ExtensionManifest Version="7.0" ExtensionBundleId="com.cascade.premiere.gridmaker" ExtensionBundleVersion="0.1.0" ExtensionBundleName="Premiere Grid Maker" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<ExtensionManifest Version="7.0" ExtensionBundleId="com.cascade.premiere.gridmaker" ExtensionBundleVersion="0.1.0" ExtensionBundleName="Grid Maker" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <ExtensionList>
     <Extension Id="com.cascade.premiere.gridmaker.panel" Version="0.1.0"/>
   </ExtensionList>
@@ -30,7 +30,7 @@
         </Lifecycle>
         <UI>
           <Type>Panel</Type>
-          <Menu>Premiere Grid Maker</Menu>
+          <Menu>Grid Maker</Menu>
           <Geometry>
             <Size>
               <Width>420</Width>

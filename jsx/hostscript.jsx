@@ -108,6 +108,7 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
             dbg("Crop component unavailable");
             return _gridMaker_result("ERR", "crop_effect_unavailable", null, debugLines);
         }
+        _gridMaker_enableTransformUniformScale(transformComp, debugLines);
         dbg("Transform strategy: ensured but untouched (native defaults preserved)");
         if (motionComp) {
             dbg("Placement strategy: Motion (default)");
@@ -169,10 +170,8 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
         cropB = _gridMaker_clamp(cropB * 100.0, 0, 49.5);
 
         visX = 1.0 - (cropL + cropR) / 100.0;
-        var baseScale = _gridMaker_getCurrentScalePercent(placementComp);
-        if (!(baseScale > 0)) {
-            baseScale = 100.0;
-        }
+        // Keep non-cumulative behavior: always compute from clip native 100%.
+        var baseScale = 100.0;
         var scale = baseScale / (cols * visX);
 
         var x = frameW * ((col + 0.5) / cols);
@@ -701,13 +700,39 @@ function _gridMaker_getCurrentScalePercent(component) {
     return NaN;
 }
 
+function _gridMaker_enableTransformUniformScale(transformComp, debugLines) {
+    if (!transformComp) {
+        return;
+    }
+    if (_gridMaker_componentKind(transformComp) !== "transform") {
+        return;
+    }
+
+    var uniform = _gridMaker_findProperty(transformComp, ["uniform scale", "echelle uniforme", "uniform"]);
+    if (!uniform) {
+        _gridMaker_debugPush(debugLines, "Transform uniform property not found");
+        return;
+    }
+
+    _gridMaker_disableTimeVarying(uniform);
+    try {
+        uniform.setValue(1, true);
+        var readback = _gridMaker_readPropertyValue(uniform);
+        _gridMaker_debugPush(debugLines, "Transform uniform set to ON readback=" + readback);
+    } catch (e1) {
+        _gridMaker_debugPush(debugLines, "Transform uniform set failed: " + e1);
+    }
+}
+
 function _gridMaker_setPlacement(component, scale, x, y, frameW, frameH, debugLines) {
     var kind = _gridMaker_componentKind(component);
     _gridMaker_debugPush(debugLines, "Placement component=" + _gridMaker_componentLabel(component) + " kind=" + kind);
 
-    var uniform = _gridMaker_findProperty(component, ["uniform scale", "echelle uniforme", "uniform"]);
-    if (uniform) {
-        _gridMaker_trySetNumberProperty(uniform, 1, debugLines, "uniform");
+    if (kind === "transform") {
+        var uniform = _gridMaker_findProperty(component, ["uniform scale", "echelle uniforme", "uniform"]);
+        if (uniform) {
+            _gridMaker_trySetNumberProperty(uniform, 1, debugLines, "uniform");
+        }
     }
 
     var scaleProp = _gridMaker_findProperty(component, [

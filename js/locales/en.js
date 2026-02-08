@@ -6,7 +6,7 @@
     flag: "🇺🇸",
     label: "English",
     strings: {
-      "app.title": "Premiere Grid Maker",
+      "app.title": "Grid Maker",
       "label.language": "Language",
       "label.rows": "Rows (height)",
       "label.cols": "Columns (width)",

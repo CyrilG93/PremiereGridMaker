@@ -6,7 +6,7 @@
     flag: "🇫🇷",
     label: "Francais",
     strings: {
-      "app.title": "Premiere Grid Maker",
+      "app.title": "Grid Maker",
       "label.language": "Langue",
       "label.rows": "Lignes (hauteur)",
       "label.cols": "Colonnes (largeur)",

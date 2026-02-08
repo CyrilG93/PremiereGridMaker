@@ -79,4 +79,4 @@ if [[ "$skip_debug" == "1" ]]; then
 else
   echo "CEP debug mode enabled for com.adobe.CSXS.8 to com.adobe.CSXS.11."
 fi
-echo "Open Premiere Pro: Window > Extensions (Legacy) > Premiere Grid Maker"
+echo "Open Premiere Pro: Window > Extensions (Legacy) > Grid Maker"
