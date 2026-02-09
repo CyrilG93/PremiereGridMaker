@@ -2,9 +2,10 @@
   "use strict";
 
   var cep = window.__adobe_cep__ || null;
+  var cepBridge = window.cep || null;
   var csInterface = (typeof CSInterface !== "undefined") ? new CSInterface() : null;
   var i18n = window.PGM_I18N || { defaultLocale: "en", locales: {} };
-  var APP_VERSION = "1.0.4";
+  var APP_VERSION = "1.0.5";
   var RELEASE_API_URL = "https://api.github.com/repos/CyrilG93/PremiereGridMaker/releases/latest";
 
   var state = {
@@ -338,9 +339,9 @@
     } catch (e1) {}
 
     try {
-      if (cep && cep.util && typeof cep.util.openURLInDefaultBrowser === "function") {
-        cep.util.openURLInDefaultBrowser(url);
-        appendDebug("UI> update URL opened via cep.util");
+      if (cepBridge && cepBridge.util && typeof cepBridge.util.openURLInDefaultBrowser === "function") {
+        cepBridge.util.openURLInDefaultBrowser(url);
+        appendDebug("UI> update URL opened via window.cep.util");
         return true;
       }
     } catch (e2) {}
@@ -352,6 +353,12 @@
         return true;
       }
     } catch (e3) {}
+
+    try {
+      window.location.href = url;
+      appendDebug("UI> update URL opened via window.location fallback");
+      return true;
+    } catch (e4) {}
 
     appendDebug("UI> failed to open update URL");
     return false;
@@ -794,12 +801,8 @@
       // Keep href synced so native anchor fallback can still work.
       updateLink.href = url;
 
-      var opened = openExternalUrl(url);
-      if (opened) {
-        event.preventDefault();
-      } else {
-        appendDebug("UI> using native anchor fallback for update URL");
-      }
+      openExternalUrl(url);
+      appendDebug("UI> native anchor fallback remains enabled");
     });
   }
 

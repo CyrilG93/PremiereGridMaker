@@ -1,6 +1,11 @@
-# Grid Maker (CEP) - v1.0.4
+# Grid Maker (CEP) - v1.0.5
 
 Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
+
+## What's new in v1.0.5
+
+- Fixed update banner download action by aligning URL opening with the same CEP method used in other Premiere panels.
+- Added stronger fallback chain for opening update download URLs.
 
 ## What's new in v1.0.4
 
