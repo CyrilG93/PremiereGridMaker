@@ -72,20 +72,33 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
 
         var qSeq = null;
         var qClip = null;
-        if (!transformComp || !cropComp || !placementComp) {
+        try {
             qSeq = qe.project.getActiveSequence();
+        } catch (eQeSeq) {
+            qSeq = null;
+            dbg("QE sequence lookup exception=" + eQeSeq);
+        }
+        if (qSeq) {
+            dbg("QE sequence acquired");
+            qClip = _gridMaker_findQEClip(qSeq, seq, clip);
+            if (qClip) {
+                dbg("QE clip found");
+            } else {
+                dbg("QE clip not found (non-blocking unless effect ensure is required)");
+            }
+        } else {
+            dbg("QE sequence unavailable (non-blocking unless effect ensure is required)");
+        }
+
+        if (!transformComp || !cropComp || !placementComp) {
             if (!qSeq) {
                 dbg("QE sequence unavailable");
                 return _gridMaker_result("ERR", "qe_unavailable", null, debugLines);
             }
-            dbg("QE sequence acquired");
-
-            qClip = _gridMaker_findQEClip(qSeq, seq, clip);
             if (!qClip) {
                 dbg("QE clip not found");
                 return _gridMaker_result("ERR", "qe_clip_not_found", null, debugLines);
             }
-            dbg("QE clip found");
 
             transformComp = _gridMaker_ensureManagedEffect(
                 clip,
@@ -133,67 +146,100 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
         var frameW = frameSize.width;
         var frameH = frameSize.height;
         var frameAspect = frameW / frameH;
+        var cellW = frameW / cols;
+        var cellH = frameH / rows;
+        var cellAspect = cellW / cellH;
+        var preferHeightAxis = cellAspect <= 1.0;
         dbg("Frame size " + frameW + "x" + frameH + " aspect=" + frameAspect);
+        dbg("Cell size " + cellW.toFixed(3) + "x" + cellH.toFixed(3) + " aspect=" + cellAspect.toFixed(6) + " preferHeightAxis=" + preferHeightAxis);
 
         var cropL = 0.0;
         var cropR = 0.0;
         var cropT = 0.0;
         var cropB = 0.0;
 
-        var targetAspect = ratioW / ratioH;
-        if (frameAspect > targetAspect) {
-            var visibleX = targetAspect / frameAspect;
-            var lossX = 1.0 - visibleX;
-            cropL += lossX * 0.5;
-            cropR += lossX * 0.5;
-        } else {
-            var visibleY = frameAspect / targetAspect;
-            var lossY = 1.0 - visibleY;
-            cropT += lossY * 0.5;
-            cropB += lossY * 0.5;
+        var nativeSize = _gridMaker_getClipNativeFrameSize(clip, qClip, debugLines);
+        var sourceW = frameW;
+        var sourceH = frameH;
+        if (nativeSize && _gridMaker_isReasonableFrameSize(nativeSize.width, nativeSize.height)) {
+            sourceW = nativeSize.width;
+            sourceH = nativeSize.height;
         }
 
-        var visX = 1.0 - cropL - cropR;
-        var visY = 1.0 - cropT - cropB;
+        var placementKind = _gridMaker_componentKind(placementComp);
+        var currentPlacementPos = _gridMaker_getCurrentPosition(placementComp);
+        var placementModeHint = _gridMaker_detectPositionMode(placementKind, currentPlacementPos, frameW, frameH);
 
-        var neededVisRatio = rows / cols;
-        var currentVisRatio = visX / visY;
-        var cellAspect = targetAspect * (rows / cols);
-        var preferHeightAxis = cellAspect <= 1.0;
+        // Some Premiere setups apply implicit "fit to frame" behavior before Motion scale.
+        // In that case, Motion scale=100 maps to a frame-fitted size, not the raw native size.
+        var intrinsicScaleFactor = 1.0;
+        var assumeFrameFit = false;
+        if (
+            placementKind === "motion" &&
+            placementModeHint === "motion_normalized" &&
+            _gridMaker_isReasonableFrameSize(sourceW, sourceH) &&
+            Math.abs((sourceW / sourceH) - frameAspect) > 0.0001
+        ) {
+            assumeFrameFit = true;
+            intrinsicScaleFactor = Math.min(frameW / sourceW, frameH / sourceH);
+        }
+        if (!_gridMaker_isFiniteNumber(intrinsicScaleFactor) || !(intrinsicScaleFactor > 0)) {
+            intrinsicScaleFactor = 1.0;
+            assumeFrameFit = false;
+        }
+
+        var baseDisplayW = sourceW * intrinsicScaleFactor;
+        var baseDisplayH = sourceH * intrinsicScaleFactor;
+        if (!(baseDisplayW > 0) || !(baseDisplayH > 0)) {
+            baseDisplayW = frameW;
+            baseDisplayH = frameH;
+        }
+
+        var scaleForWidth = 100.0 * (cellW / baseDisplayW);
+        var scaleForHeight = 100.0 * (cellH / baseDisplayH);
+        var scale = preferHeightAxis ? scaleForHeight : scaleForWidth;
 
         if (preferHeightAxis) {
-            var targetVisX = visY * neededVisRatio;
-            if (targetVisX <= visX) {
-                var extraX = (visX - targetVisX) * 0.5;
-                cropL += extraX;
-                cropR += extraX;
-                visX = targetVisX;
-            } else {
-                var fallbackVisY = visX / neededVisRatio;
-                if (fallbackVisY < visY) {
-                    var fallbackExtraY = (visY - fallbackVisY) * 0.5;
-                    cropT += fallbackExtraY;
-                    cropB += fallbackExtraY;
-                    visY = fallbackVisY;
-                }
+            var prefScaledW = baseDisplayW * (scale / 100.0);
+            if (prefScaledW + 0.0001 < cellW) {
+                scale = scaleForWidth;
+                dbg("Scale fallback to width to ensure full cell fill");
             }
         } else {
-            var targetVisY = visX / neededVisRatio;
-            if (targetVisY <= visY) {
-                var extraY = (visY - targetVisY) * 0.5;
-                cropT += extraY;
-                cropB += extraY;
-                visY = targetVisY;
-            } else {
-                var fallbackVisX = visY * neededVisRatio;
-                if (fallbackVisX < visX) {
-                    var fallbackExtraX = (visX - fallbackVisX) * 0.5;
-                    cropL += fallbackExtraX;
-                    cropR += fallbackExtraX;
-                    visX = fallbackVisX;
-                }
+            var prefScaledH = baseDisplayH * (scale / 100.0);
+            if (prefScaledH + 0.0001 < cellH) {
+                scale = scaleForHeight;
+                dbg("Scale fallback to height to ensure full cell fill");
             }
         }
+
+        if (!_gridMaker_isFiniteNumber(scale) || !(scale > 0)) {
+            scale = 100.0;
+            dbg("Scale fallback to 100 due to invalid computed scale");
+        }
+
+        var scaledW = baseDisplayW * (scale / 100.0);
+        var scaledH = baseDisplayH * (scale / 100.0);
+
+        var visX = cellW / scaledW;
+        var visY = cellH / scaledH;
+        if (!_gridMaker_isFiniteNumber(visX) || !(visX > 0)) {
+            visX = 1.0;
+        }
+        if (!_gridMaker_isFiniteNumber(visY) || !(visY > 0)) {
+            visY = 1.0;
+        }
+        if (visX > 1.0) {
+            visX = 1.0;
+        }
+        if (visY > 1.0) {
+            visY = 1.0;
+        }
+
+        cropL = (1.0 - visX) * 0.5;
+        cropR = cropL;
+        cropT = (1.0 - visY) * 0.5;
+        cropB = cropT;
 
         cropL = _gridMaker_clamp(cropL * 100.0, 0, 49.5);
         cropR = _gridMaker_clamp(cropR * 100.0, 0, 49.5);
@@ -202,22 +248,15 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
 
         visX = 1.0 - (cropL + cropR) / 100.0;
         visY = 1.0 - (cropT + cropB) / 100.0;
-        var nativeSize = _gridMaker_getClipNativeFrameSize(clip, qClip, debugLines);
-        var baseScale = _gridMaker_computeBaseFitScale(frameW, frameH, nativeSize);
-        var scaleDivisor = cols * visX;
-        if (preferHeightAxis) {
-            scaleDivisor = rows * visY;
-        }
-        if (!(scaleDivisor > 0)) {
-            scaleDivisor = cols * visX;
-        }
-        var scale = baseScale / scaleDivisor;
 
         var x = frameW * ((col + 0.5) / cols);
         var y = frameH * ((row + 0.5) / rows);
-        dbg("Computed crop mode cellAspect=" + cellAspect.toFixed(6) + " preferHeightAxis=" + preferHeightAxis + " neededVisRatio=" + neededVisRatio.toFixed(6) + " currentVisRatio=" + currentVisRatio.toFixed(6));
+        dbg("Computed placement mode kind=" + placementKind + " modeHint=" + placementModeHint + " assumeFrameFit=" + assumeFrameFit + " intrinsicScaleFactor=" + intrinsicScaleFactor.toFixed(6));
+        dbg("Computed source size " + sourceW.toFixed(3) + "x" + sourceH.toFixed(3) + " baseDisplayAt100=" + baseDisplayW.toFixed(3) + "x" + baseDisplayH.toFixed(3));
+        dbg("Computed target scale width=" + scaleForWidth.toFixed(3) + " height=" + scaleForHeight.toFixed(3) + " chosen=" + scale.toFixed(3));
+        dbg("Computed scaled size " + scaledW.toFixed(3) + "x" + scaledH.toFixed(3) + " targetCell=" + cellW.toFixed(3) + "x" + cellH.toFixed(3));
         dbg("Computed crop LRTB=" + cropL.toFixed(3) + "," + cropR.toFixed(3) + "," + cropT.toFixed(3) + "," + cropB.toFixed(3) + " visX=" + visX.toFixed(6) + " visY=" + visY.toFixed(6));
-        dbg("Computed baseScale=" + baseScale.toFixed(3) + " scale=" + scale.toFixed(3) + " scaleDivisor=" + scaleDivisor.toFixed(6) + " x=" + x.toFixed(3) + " y=" + y.toFixed(3));
+        dbg("Computed position x=" + x.toFixed(3) + " y=" + y.toFixed(3));
 
         if (!_gridMaker_setPlacement(placementComp, scale, x, y, frameW, frameH, debugLines)) {
             dbg("Placement write failed");
@@ -1353,6 +1392,14 @@ function _gridMaker_getClipNativeFrameSize(clip, qClip, debugLines) {
     var candidates = [];
     var projectItem = null;
 
+    // Prefer QE clip dimensions first: they often reflect timeline-effective media sizing
+    // (for example when Premiere applies internal frame-scaling behavior).
+    if (qClip) {
+        _gridMaker_pushSizeCandidate(candidates, _gridMaker_toNumber(qClip.width), _gridMaker_toNumber(qClip.height), "qClip.size", debugLines);
+        _gridMaker_pushSizeCandidate(candidates, _gridMaker_toNumber(qClip.videoFrameWidth), _gridMaker_toNumber(qClip.videoFrameHeight), "qClip.videoFrame", debugLines);
+        _gridMaker_pushSizeCandidate(candidates, _gridMaker_toNumber(qClip.sourceWidth), _gridMaker_toNumber(qClip.sourceHeight), "qClip.source", debugLines);
+    }
+
     try {
         projectItem = clip.projectItem;
     } catch (e1) {}
@@ -1377,12 +1424,6 @@ function _gridMaker_getClipNativeFrameSize(clip, qClip, debugLines) {
                 _gridMaker_pushSizeCandidate(candidates, xmpSize.width, xmpSize.height, "projectItem.xmpMetadata", debugLines);
             }
         } catch (e3) {}
-    }
-
-    if (qClip) {
-        _gridMaker_pushSizeCandidate(candidates, _gridMaker_toNumber(qClip.sourceWidth), _gridMaker_toNumber(qClip.sourceHeight), "qClip.source", debugLines);
-        _gridMaker_pushSizeCandidate(candidates, _gridMaker_toNumber(qClip.videoFrameWidth), _gridMaker_toNumber(qClip.videoFrameHeight), "qClip.videoFrame", debugLines);
-        _gridMaker_pushSizeCandidate(candidates, _gridMaker_toNumber(qClip.width), _gridMaker_toNumber(qClip.height), "qClip.size", debugLines);
     }
 
     if (candidates.length > 0) {

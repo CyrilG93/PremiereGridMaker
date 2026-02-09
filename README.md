@@ -1,6 +1,12 @@
-# Grid Maker (CEP) - v1.0.5
+# Grid Maker (CEP) - v1.0.6
 
 Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
+
+## What's new in v1.0.6
+
+- Fixed scale computation when source and sequence ratios differ (notably `9:16` and `1:1` timelines).
+- Grid cell fill is now consistent with crop direction rules, including Motion normalized workflows.
+- Added stronger QE/native-size diagnostics to stabilize placement behavior.
 
 ## What's new in v1.0.5
 
