@@ -82,6 +82,7 @@ h1 {
   border-radius: 8px;
   background: var(--panel);
   padding: clamp(7px, 2vw, 10px);
+  min-height: 0;
 }
 
 .update-banner {
@@ -152,16 +153,37 @@ input[type="range"] {
   margin-bottom: 8px;
 }
 
+.preview-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 180px;
+  min-height: 0;
+}
+
+.grid-stage {
+  flex: 1 1 auto;
+  min-height: 88px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #101010;
+  overflow: hidden;
+  padding: clamp(4px, 1.5vw, 8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .grid-preview {
-  width: 100%;
-  aspect-ratio: 16 / 9;
   border: 1px solid var(--line);
   border-radius: 8px;
   overflow: hidden;
   display: grid;
   gap: 2px;
-  background: #101010;
-  min-height: 112px;
+  background: #0f0f0f;
+  width: 160px;
+  height: 90px;
+  max-width: 100%;
+  max-height: 100%;
 }
 
 .cell {
@@ -189,7 +211,6 @@ input[type="range"] {
 
 .debug-panel {
   min-height: 0;
-  margin-top: auto;
   overflow: hidden;
 }
 
@@ -303,8 +324,8 @@ input[type="range"] {
     font-size: 11px;
   }
 
-  .grid-preview {
-    min-height: 74px;
+  .grid-stage {
+    min-height: 72px;
   }
 
   .panel {

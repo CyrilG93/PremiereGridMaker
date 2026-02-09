@@ -11,7 +11,7 @@
     <header class="app-header">
       <div class="title-wrap">
         <h1 data-i18n="app.title">Grid Maker</h1>
-        <span id="appVersion" class="app-version">V1.0.2</span>
+        <span id="appVersion" class="app-version">V1.0.3</span>
       </div>
       <div class="lang-picker">
         <select id="languageSelect" aria-label="Language"></select>
@@ -49,12 +49,14 @@
       </p>
     </section>
 
-    <section class="panel">
+    <section class="panel preview-panel">
       <div class="grid-header">
         <strong data-i18n="label.preview">Preview</strong>
         <span id="summary">2 x 2</span>
       </div>
-      <div id="gridPreview" class="grid-preview" aria-label="Grid"></div>
+      <div id="gridStage" class="grid-stage">
+        <div id="gridPreview" class="grid-preview" aria-label="Grid"></div>
+      </div>
     </section>
 
     <details id="debugPanel" class="panel debug-panel">

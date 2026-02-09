@@ -4,7 +4,7 @@
   var cep = window.__adobe_cep__ || null;
   var csInterface = (typeof CSInterface !== "undefined") ? new CSInterface() : null;
   var i18n = window.PGM_I18N || { defaultLocale: "en", locales: {} };
-  var APP_VERSION = "1.0.2";
+  var APP_VERSION = "1.0.3";
   var RELEASE_API_URL = "https://api.github.com/repos/CyrilG93/PremiereGridMaker/releases/latest";
 
   var state = {
@@ -36,10 +36,12 @@
   var colsNumber = document.getElementById("colsNumber");
   var ratio = document.getElementById("ratio");
   var summary = document.getElementById("summary");
+  var gridStage = document.getElementById("gridStage");
   var grid = document.getElementById("gridPreview");
   var status = document.getElementById("status");
   var languageSelect = document.getElementById("languageSelect");
   var copyDebugBtn = document.getElementById("copyDebugBtn");
+  var debugPanel = document.getElementById("debugPanel");
   var debugLog = document.getElementById("debugLog");
   var appVersion = document.getElementById("appVersion");
   var updateBanner = document.getElementById("updateBanner");
@@ -224,6 +226,7 @@
     if (!updateState.visible || !updateState.latest || !updateState.downloadUrl) {
       updateBanner.hidden = true;
       updateLink.href = "#";
+      schedulePreviewFit();
       return;
     }
 
@@ -232,6 +235,7 @@
       ? t("update.download_notice", { latest: updateState.latest, current: updateState.current })
       : ("New update available (v" + updateState.latest + "), click here to download.");
     updateLink.href = updateState.downloadUrl;
+    schedulePreviewFit();
   }
 
   function checkForUpdates() {
@@ -393,6 +397,41 @@
     grid.style.gridTemplateRows = "repeat(" + state.rows + ", 1fr)";
     grid.style.gridTemplateColumns = "repeat(" + state.cols + ", 1fr)";
     grid.style.aspectRatio = state.ratioW + " / " + state.ratioH;
+  }
+
+  function fitGridPreview() {
+    if (!grid || !gridStage) {
+      return;
+    }
+
+    var stageWidth = gridStage.clientWidth;
+    var stageHeight = gridStage.clientHeight;
+    if (!(stageWidth > 0) || !(stageHeight > 0)) {
+      return;
+    }
+
+    var ratioValue = state.ratioW / state.ratioH;
+    if (!(ratioValue > 0)) {
+      ratioValue = 16 / 9;
+    }
+
+    var nextWidth = stageWidth;
+    var nextHeight = nextWidth / ratioValue;
+    if (nextHeight > stageHeight) {
+      nextHeight = stageHeight;
+      nextWidth = nextHeight * ratioValue;
+    }
+
+    grid.style.width = Math.max(1, Math.floor(nextWidth)) + "px";
+    grid.style.height = Math.max(1, Math.floor(nextHeight)) + "px";
+  }
+
+  function schedulePreviewFit() {
+    if (typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(fitGridPreview);
+      return;
+    }
+    window.setTimeout(fitGridPreview, 0);
   }
 
   function callHost(fnCall, onDone) {
@@ -569,6 +608,7 @@
         grid.appendChild(cell);
       }
     }
+    schedulePreviewFit();
   }
 
   function renderStaticTexts() {
@@ -648,6 +688,16 @@
     state.ratioH = next.h;
     renderGrid();
   });
+
+  window.addEventListener("resize", function () {
+    schedulePreviewFit();
+  });
+
+  if (debugPanel) {
+    debugPanel.addEventListener("toggle", function () {
+      schedulePreviewFit();
+    });
+  }
 
   languageSelect.addEventListener("change", function () {
     appendDebug("UI> locale changed to " + languageSelect.value);

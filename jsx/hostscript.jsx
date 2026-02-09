@@ -158,19 +158,41 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
 
         var neededVisRatio = rows / cols;
         var currentVisRatio = visX / visY;
+        var cellAspect = targetAspect * (rows / cols);
+        var preferHeightAxis = cellAspect <= 1.0;
 
-        if (currentVisRatio > neededVisRatio) {
-            var finalVisX = visY * neededVisRatio;
-            var extraX = (visX - finalVisX) * 0.5;
-            cropL += extraX;
-            cropR += extraX;
-            visX = finalVisX;
+        if (preferHeightAxis) {
+            var targetVisX = visY * neededVisRatio;
+            if (targetVisX <= visX) {
+                var extraX = (visX - targetVisX) * 0.5;
+                cropL += extraX;
+                cropR += extraX;
+                visX = targetVisX;
+            } else {
+                var fallbackVisY = visX / neededVisRatio;
+                if (fallbackVisY < visY) {
+                    var fallbackExtraY = (visY - fallbackVisY) * 0.5;
+                    cropT += fallbackExtraY;
+                    cropB += fallbackExtraY;
+                    visY = fallbackVisY;
+                }
+            }
         } else {
-            var finalVisY = visX / neededVisRatio;
-            var extraY = (visY - finalVisY) * 0.5;
-            cropT += extraY;
-            cropB += extraY;
-            visY = finalVisY;
+            var targetVisY = visX / neededVisRatio;
+            if (targetVisY <= visY) {
+                var extraY = (visY - targetVisY) * 0.5;
+                cropT += extraY;
+                cropB += extraY;
+                visY = targetVisY;
+            } else {
+                var fallbackVisX = visY * neededVisRatio;
+                if (fallbackVisX < visX) {
+                    var fallbackExtraX = (visX - fallbackVisX) * 0.5;
+                    cropL += fallbackExtraX;
+                    cropR += fallbackExtraX;
+                    visX = fallbackVisX;
+                }
+            }
         }
 
         cropL = _gridMaker_clamp(cropL * 100.0, 0, 49.5);
@@ -179,14 +201,23 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
         cropB = _gridMaker_clamp(cropB * 100.0, 0, 49.5);
 
         visX = 1.0 - (cropL + cropR) / 100.0;
+        visY = 1.0 - (cropT + cropB) / 100.0;
         var nativeSize = _gridMaker_getClipNativeFrameSize(clip, qClip, debugLines);
         var baseScale = _gridMaker_computeBaseFitScale(frameW, frameH, nativeSize);
-        var scale = baseScale / (cols * visX);
+        var scaleDivisor = cols * visX;
+        if (preferHeightAxis) {
+            scaleDivisor = rows * visY;
+        }
+        if (!(scaleDivisor > 0)) {
+            scaleDivisor = cols * visX;
+        }
+        var scale = baseScale / scaleDivisor;
 
         var x = frameW * ((col + 0.5) / cols);
         var y = frameH * ((row + 0.5) / rows);
-        dbg("Computed crop LRTB=" + cropL.toFixed(3) + "," + cropR.toFixed(3) + "," + cropT.toFixed(3) + "," + cropB.toFixed(3));
-        dbg("Computed baseScale=" + baseScale.toFixed(3) + " scale=" + scale.toFixed(3) + " x=" + x.toFixed(3) + " y=" + y.toFixed(3));
+        dbg("Computed crop mode cellAspect=" + cellAspect.toFixed(6) + " preferHeightAxis=" + preferHeightAxis + " neededVisRatio=" + neededVisRatio.toFixed(6) + " currentVisRatio=" + currentVisRatio.toFixed(6));
+        dbg("Computed crop LRTB=" + cropL.toFixed(3) + "," + cropR.toFixed(3) + "," + cropT.toFixed(3) + "," + cropB.toFixed(3) + " visX=" + visX.toFixed(6) + " visY=" + visY.toFixed(6));
+        dbg("Computed baseScale=" + baseScale.toFixed(3) + " scale=" + scale.toFixed(3) + " scaleDivisor=" + scaleDivisor.toFixed(6) + " x=" + x.toFixed(3) + " y=" + y.toFixed(3));
 
         if (!_gridMaker_setPlacement(placementComp, scale, x, y, frameW, frameH, debugLines)) {
             dbg("Placement write failed");
