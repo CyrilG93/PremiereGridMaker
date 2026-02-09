@@ -60,12 +60,25 @@ mkdir -p "$base_path"
 rm -rf "$install_path"
 mkdir -p "$install_path"
 
-rsync -a \
-  --delete \
-  --exclude ".git" \
-  --exclude "node_modules" \
-  "${repo_root}/" \
-  "${install_path}/"
+required_items=(
+  "CSXS"
+  "css"
+  "js"
+  "jsx"
+  "index.html"
+)
+
+for item in "${required_items[@]}"; do
+  src="${repo_root}/${item}"
+  if [[ ! -e "$src" ]]; then
+    echo "Missing required item: ${item}"
+    exit 1
+  fi
+done
+
+for item in "${required_items[@]}"; do
+  rsync -a --exclude ".DS_Store" "${repo_root}/${item}" "${install_path}/"
+done
 
 if [[ "$skip_debug" == "0" ]]; then
   for version in 8 9 10 11; do
@@ -73,7 +86,7 @@ if [[ "$skip_debug" == "0" ]]; then
   done
 fi
 
-echo "Installed '${extension_name}' to: ${install_path}"
+echo "Installed runtime files for '${extension_name}' to: ${install_path}"
 if [[ "$skip_debug" == "1" ]]; then
   echo "Skipped CEP debug mode changes."
 else

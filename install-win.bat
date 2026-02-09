@@ -72,11 +72,64 @@ if not exist "%BASE_PATH%" mkdir "%BASE_PATH%"
 if exist "%INSTALL_PATH%" rmdir /s /q "%INSTALL_PATH%"
 mkdir "%INSTALL_PATH%"
 
-robocopy "%REPO_ROOT%" "%INSTALL_PATH%" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XD ".git" "node_modules"
-set "RC=%ERRORLEVEL%"
-if %RC% GEQ 8 (
-    echo Installation failed during file copy. Robocopy exit code: %RC%
-    set "EXIT_CODE=%RC%"
+if not exist "%REPO_ROOT%\CSXS" (
+    echo Missing required folder: CSXS
+    set "EXIT_CODE=1"
+    goto finish
+)
+if not exist "%REPO_ROOT%\css" (
+    echo Missing required folder: css
+    set "EXIT_CODE=1"
+    goto finish
+)
+if not exist "%REPO_ROOT%\js" (
+    echo Missing required folder: js
+    set "EXIT_CODE=1"
+    goto finish
+)
+if not exist "%REPO_ROOT%\jsx" (
+    echo Missing required folder: jsx
+    set "EXIT_CODE=1"
+    goto finish
+)
+if not exist "%REPO_ROOT%\index.html" (
+    echo Missing required file: index.html
+    set "EXIT_CODE=1"
+    goto finish
+)
+
+robocopy "%REPO_ROOT%\CSXS" "%INSTALL_PATH%\CSXS" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XF ".DS_Store"
+if errorlevel 8 (
+    echo Installation failed copying CSXS. Robocopy exit code: %ERRORLEVEL%
+    set "EXIT_CODE=%ERRORLEVEL%"
+    goto finish
+)
+
+robocopy "%REPO_ROOT%\css" "%INSTALL_PATH%\css" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XF ".DS_Store"
+if errorlevel 8 (
+    echo Installation failed copying css. Robocopy exit code: %ERRORLEVEL%
+    set "EXIT_CODE=%ERRORLEVEL%"
+    goto finish
+)
+
+robocopy "%REPO_ROOT%\js" "%INSTALL_PATH%\js" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XF ".DS_Store"
+if errorlevel 8 (
+    echo Installation failed copying js. Robocopy exit code: %ERRORLEVEL%
+    set "EXIT_CODE=%ERRORLEVEL%"
+    goto finish
+)
+
+robocopy "%REPO_ROOT%\jsx" "%INSTALL_PATH%\jsx" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XF ".DS_Store"
+if errorlevel 8 (
+    echo Installation failed copying jsx. Robocopy exit code: %ERRORLEVEL%
+    set "EXIT_CODE=%ERRORLEVEL%"
+    goto finish
+)
+
+copy /Y "%REPO_ROOT%\index.html" "%INSTALL_PATH%\index.html" >nul
+if errorlevel 1 (
+    echo Installation failed copying index.html.
+    set "EXIT_CODE=1"
     goto finish
 )
 
@@ -86,7 +139,7 @@ if "%SKIP_DEBUG%"=="0" (
     )
 )
 
-echo Installed "%EXT_NAME%" to: %INSTALL_PATH%
+echo Installed runtime files for "%EXT_NAME%" to: %INSTALL_PATH%
 if "%SKIP_DEBUG%"=="1" (
     echo Skipped CEP debug mode changes.
 ) else (
