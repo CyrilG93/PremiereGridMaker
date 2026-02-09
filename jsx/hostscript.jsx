@@ -1894,7 +1894,7 @@ function _gridMaker_isTrustedReleaseZipUrl(url) {
         return false;
     }
     var raw = String(url);
-    return /^https:\/\/github\.com\/CyrilG93\/PremiereGridMaker\/releases\/download\/v[0-9]+\.[0-9]+\.[0-9]+\/[^?#]+\.zip$/i.test(raw);
+    return /^https:\/\/github\.com\/CyrilG93\/PremiereGridMaker\/releases\/(?:download\/v[0-9]+\.[0-9]+\.[0-9]+|latest\/download)\/[^?#]+\.zip(?:[?#].*)?$/i.test(raw);
 }
 
 function _gridMaker_escapeWindowsArg(value) {

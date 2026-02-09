@@ -4,7 +4,7 @@
   var cep = window.__adobe_cep__ || null;
   var csInterface = (typeof CSInterface !== "undefined") ? new CSInterface() : null;
   var i18n = window.PGM_I18N || { defaultLocale: "en", locales: {} };
-  var APP_VERSION = "1.0.3";
+  var APP_VERSION = "1.0.4";
   var RELEASE_API_URL = "https://api.github.com/repos/CyrilG93/PremiereGridMaker/releases/latest";
 
   var state = {
@@ -210,7 +210,7 @@
 
   function isTrustedReleaseZipUrl(url) {
     var raw = String(url || "");
-    return /^https:\/\/github\.com\/CyrilG93\/PremiereGridMaker\/releases\/download\/v[0-9]+\.[0-9]+\.[0-9]+\/[^?#]+\.zip$/i.test(raw);
+    return /^https:\/\/github\.com\/CyrilG93\/PremiereGridMaker\/releases\/(?:download\/v[0-9]+\.[0-9]+\.[0-9]+|latest\/download)\/[^?#]+\.zip(?:[?#].*)?$/i.test(raw);
   }
 
   function quoteForEvalScript(value) {
@@ -305,7 +305,12 @@
   function openExternalUrl(url) {
     if (!url || !isTrustedReleaseZipUrl(url)) {
       appendDebug("UI> rejected untrusted update URL: " + url);
-      return;
+      return false;
+    }
+
+    // First try CEP-native browser open while still in user gesture context.
+    if (openExternalUrlFallback(url)) {
+      return true;
     }
 
     var script = "gridMaker_openExternalUrl(" + quoteForEvalScript(url) + ")";
@@ -320,6 +325,7 @@
       appendDebug("UI> host open-url failed, trying CEP fallback");
       openExternalUrlFallback(url);
     });
+    return false;
   }
 
   function openExternalUrlFallback(url) {
@@ -327,7 +333,7 @@
       if (csInterface && typeof csInterface.openURLInDefaultBrowser === "function") {
         csInterface.openURLInDefaultBrowser(url);
         appendDebug("UI> update URL opened via CSInterface");
-        return;
+        return true;
       }
     } catch (e1) {}
 
@@ -335,11 +341,20 @@
       if (cep && cep.util && typeof cep.util.openURLInDefaultBrowser === "function") {
         cep.util.openURLInDefaultBrowser(url);
         appendDebug("UI> update URL opened via cep.util");
-        return;
+        return true;
       }
     } catch (e2) {}
 
+    try {
+      var popup = window.open(url, "_blank");
+      if (popup) {
+        appendDebug("UI> update URL opened via window.open");
+        return true;
+      }
+    } catch (e3) {}
+
     appendDebug("UI> failed to open update URL");
+    return false;
   }
 
   function parseRatio(value) {
@@ -768,10 +783,23 @@
 
   if (updateLink) {
     updateLink.addEventListener("click", function (event) {
-      event.preventDefault();
       var url = updateState.downloadUrl || updateLink.href || "";
       appendDebug("UI> update download clicked: " + url);
-      openExternalUrl(url);
+      if (!url || !isTrustedReleaseZipUrl(url)) {
+        event.preventDefault();
+        appendDebug("UI> click blocked (untrusted/empty URL)");
+        return;
+      }
+
+      // Keep href synced so native anchor fallback can still work.
+      updateLink.href = url;
+
+      var opened = openExternalUrl(url);
+      if (opened) {
+        event.preventDefault();
+      } else {
+        appendDebug("UI> using native anchor fallback for update URL");
+      }
     });
   }
 
