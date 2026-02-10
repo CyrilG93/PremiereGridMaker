@@ -282,6 +282,290 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
     }
 }
 
+function gridMaker_applyToSelectedCustomCell(leftNorm, topNorm, widthNorm, heightNorm, ratioW, ratioH) {
+    var debugLines = [];
+    function dbg(message) {
+        _gridMaker_debugPush(debugLines, message);
+    }
+
+    try {
+        dbg("INPUT customCell left=" + leftNorm + " top=" + topNorm + " width=" + widthNorm + " height=" + heightNorm + " ratio=" + ratioW + ":" + ratioH);
+        app.enableQE();
+        dbg("QE enabled");
+
+        var seq = app.project.activeSequence;
+        if (!seq) {
+            dbg("No active sequence");
+            return _gridMaker_result("ERR", "no_active_sequence", null, debugLines);
+        }
+        dbg("Sequence name=" + (seq.name || "<unknown>"));
+
+        leftNorm = parseFloat(leftNorm);
+        topNorm = parseFloat(topNorm);
+        widthNorm = parseFloat(widthNorm);
+        heightNorm = parseFloat(heightNorm);
+        ratioW = parseFloat(ratioW);
+        ratioH = parseFloat(ratioH);
+        dbg("PARSED customCell left=" + leftNorm + " top=" + topNorm + " width=" + widthNorm + " height=" + heightNorm + " ratio=" + ratioW + ":" + ratioH);
+
+        if (!(ratioW > 0) || !(ratioH > 0)) {
+            dbg("Invalid ratio");
+            return _gridMaker_result("ERR", "invalid_ratio", null, debugLines);
+        }
+        if (!(widthNorm > 0) || !(heightNorm > 0)) {
+            dbg("Invalid custom cell size");
+            return _gridMaker_result("ERR", "invalid_grid", null, debugLines);
+        }
+        if (!_gridMaker_isFiniteNumber(leftNorm) || !_gridMaker_isFiniteNumber(topNorm) || !_gridMaker_isFiniteNumber(widthNorm) || !_gridMaker_isFiniteNumber(heightNorm)) {
+            dbg("Invalid custom cell values");
+            return _gridMaker_result("ERR", "invalid_grid", null, debugLines);
+        }
+        if (leftNorm < 0 || topNorm < 0 || leftNorm + widthNorm > 1.000001 || topNorm + heightNorm > 1.000001) {
+            dbg("Custom cell out of bounds");
+            return _gridMaker_result("ERR", "cell_out_of_bounds", null, debugLines);
+        }
+
+        var selection = seq.getSelection();
+        if (!selection || selection.length < 1) {
+            dbg("No timeline selection");
+            return _gridMaker_result("ERR", "no_selection", null, debugLines);
+        }
+        dbg("Selection length=" + selection.length);
+
+        var videoClips = [];
+        for (var i = 0; i < selection.length; i++) {
+            if (selection[i] && selection[i].mediaType === "Video") {
+                videoClips.push(selection[i]);
+                dbg("Selected video #" + videoClips.length + " name=" + _gridMaker_clipName(selection[i]) + " start=" + _gridMaker_timeToSeconds(selection[i].start) + " end=" + _gridMaker_timeToSeconds(selection[i].end));
+            }
+        }
+        dbg("Video clips in selection=" + videoClips.length);
+        if (videoClips.length < 1) {
+            dbg("No selected video clip found in selection");
+            return _gridMaker_result("ERR", "no_video_selected", null, debugLines);
+        }
+        if (videoClips.length > 1) {
+            dbg("Multiple selected video clips; abort for deterministic behavior");
+            return _gridMaker_result("ERR", "multiple_video_selected", null, debugLines);
+        }
+        var clip = videoClips[0];
+        dbg("Clip name=" + _gridMaker_clipName(clip) + " start=" + _gridMaker_timeToSeconds(clip.start) + " end=" + _gridMaker_timeToSeconds(clip.end));
+
+        var transformComp = _gridMaker_findManagedTransformComponent(clip);
+        var motionComp = _gridMaker_findMotionComponent(clip);
+        var placementComp = motionComp;
+        var cropComp = _gridMaker_findManagedCropComponent(clip);
+        dbg("Components pre-check placement=" + _gridMaker_componentLabel(placementComp) + " transform=" + _gridMaker_componentLabel(transformComp) + " motion=" + _gridMaker_componentLabel(motionComp) + " crop=" + _gridMaker_componentLabel(cropComp));
+        _gridMaker_dumpPlacementComponents(clip, debugLines, "BEFORE");
+
+        var qSeq = null;
+        var qClip = null;
+        try {
+            qSeq = qe.project.getActiveSequence();
+        } catch (eQeSeq) {
+            qSeq = null;
+            dbg("QE sequence lookup exception=" + eQeSeq);
+        }
+        if (qSeq) {
+            dbg("QE sequence acquired");
+            qClip = _gridMaker_findQEClip(qSeq, seq, clip);
+            if (qClip) {
+                dbg("QE clip found");
+            } else {
+                dbg("QE clip not found (non-blocking unless effect ensure is required)");
+            }
+        } else {
+            dbg("QE sequence unavailable (non-blocking unless effect ensure is required)");
+        }
+
+        if (!transformComp || !cropComp || !placementComp) {
+            if (!qSeq) {
+                dbg("QE sequence unavailable");
+                return _gridMaker_result("ERR", "qe_unavailable", null, debugLines);
+            }
+            if (!qClip) {
+                dbg("QE clip not found");
+                return _gridMaker_result("ERR", "qe_clip_not_found", null, debugLines);
+            }
+
+            transformComp = _gridMaker_ensureManagedEffect(
+                clip,
+                qClip,
+                "transform",
+                _gridMaker_transformEffectLookupNames(),
+                debugLines
+            );
+            dbg("Transform component after ensure=" + _gridMaker_componentLabel(transformComp));
+
+            cropComp = _gridMaker_ensureManagedEffect(
+                clip,
+                qClip,
+                "crop",
+                _gridMaker_cropEffectLookupNames(),
+                debugLines
+            );
+            dbg("Crop component after ensure=" + _gridMaker_componentLabel(cropComp));
+
+            motionComp = _gridMaker_findMotionComponent(clip);
+            placementComp = motionComp;
+            dbg("Placement component after ensure=" + _gridMaker_componentLabel(placementComp));
+        }
+
+        if (!placementComp) {
+            dbg("Motion component unavailable");
+            return _gridMaker_result("ERR", "motion_effect_unavailable", null, debugLines);
+        }
+        if (!cropComp) {
+            dbg("Crop component unavailable");
+            return _gridMaker_result("ERR", "crop_effect_unavailable", null, debugLines);
+        }
+        if (!transformComp) {
+            dbg("Transform effect unavailable; continuing with Motion+Crop only");
+        } else {
+            dbg("Transform strategy: added/kept as neutral effect (no parameter writes)");
+        }
+        dbg("Placement strategy: Motion only");
+
+        var frameSize = _gridMaker_getSequenceFrameSize(seq, qSeq);
+        if (!frameSize || !_gridMaker_isFiniteNumber(frameSize.width) || !_gridMaker_isFiniteNumber(frameSize.height) || !(frameSize.width > 0) || !(frameSize.height > 0)) {
+            dbg("Invalid sequence frame size");
+            return _gridMaker_result("ERR", "invalid_sequence_size", null, debugLines);
+        }
+        var frameW = frameSize.width;
+        var frameH = frameSize.height;
+        var frameAspect = frameW / frameH;
+        var cellW = frameW * widthNorm;
+        var cellH = frameH * heightNorm;
+        var cellAspect = cellW / cellH;
+        var preferHeightAxis = cellAspect <= 1.0;
+        dbg("Frame size " + frameW + "x" + frameH + " aspect=" + frameAspect);
+        dbg("Custom cell size " + cellW.toFixed(3) + "x" + cellH.toFixed(3) + " aspect=" + cellAspect.toFixed(6) + " preferHeightAxis=" + preferHeightAxis);
+
+        var cropL = 0.0;
+        var cropR = 0.0;
+        var cropT = 0.0;
+        var cropB = 0.0;
+
+        var nativeSize = _gridMaker_getClipNativeFrameSize(clip, qClip, debugLines);
+        var sourceW = frameW;
+        var sourceH = frameH;
+        if (nativeSize && _gridMaker_isReasonableFrameSize(nativeSize.width, nativeSize.height)) {
+            sourceW = nativeSize.width;
+            sourceH = nativeSize.height;
+        }
+
+        var placementKind = _gridMaker_componentKind(placementComp);
+        var currentPlacementPos = _gridMaker_getCurrentPosition(placementComp);
+        var placementModeHint = _gridMaker_detectPositionMode(placementKind, currentPlacementPos, frameW, frameH);
+
+        var intrinsicScaleFactor = 1.0;
+        var assumeFrameFit = false;
+        if (
+            placementKind === "motion" &&
+            placementModeHint === "motion_normalized" &&
+            _gridMaker_isReasonableFrameSize(sourceW, sourceH) &&
+            Math.abs((sourceW / sourceH) - frameAspect) > 0.0001
+        ) {
+            assumeFrameFit = true;
+            intrinsicScaleFactor = Math.min(frameW / sourceW, frameH / sourceH);
+        }
+        if (!_gridMaker_isFiniteNumber(intrinsicScaleFactor) || !(intrinsicScaleFactor > 0)) {
+            intrinsicScaleFactor = 1.0;
+            assumeFrameFit = false;
+        }
+
+        var baseDisplayW = sourceW * intrinsicScaleFactor;
+        var baseDisplayH = sourceH * intrinsicScaleFactor;
+        if (!(baseDisplayW > 0) || !(baseDisplayH > 0)) {
+            baseDisplayW = frameW;
+            baseDisplayH = frameH;
+        }
+
+        var scaleForWidth = 100.0 * (cellW / baseDisplayW);
+        var scaleForHeight = 100.0 * (cellH / baseDisplayH);
+        var scale = preferHeightAxis ? scaleForHeight : scaleForWidth;
+
+        if (preferHeightAxis) {
+            var prefScaledW = baseDisplayW * (scale / 100.0);
+            if (prefScaledW + 0.0001 < cellW) {
+                scale = scaleForWidth;
+                dbg("Scale fallback to width to ensure full cell fill");
+            }
+        } else {
+            var prefScaledH = baseDisplayH * (scale / 100.0);
+            if (prefScaledH + 0.0001 < cellH) {
+                scale = scaleForHeight;
+                dbg("Scale fallback to height to ensure full cell fill");
+            }
+        }
+
+        if (!_gridMaker_isFiniteNumber(scale) || !(scale > 0)) {
+            scale = 100.0;
+            dbg("Scale fallback to 100 due to invalid computed scale");
+        }
+
+        var scaledW = baseDisplayW * (scale / 100.0);
+        var scaledH = baseDisplayH * (scale / 100.0);
+
+        var visX = cellW / scaledW;
+        var visY = cellH / scaledH;
+        if (!_gridMaker_isFiniteNumber(visX) || !(visX > 0)) {
+            visX = 1.0;
+        }
+        if (!_gridMaker_isFiniteNumber(visY) || !(visY > 0)) {
+            visY = 1.0;
+        }
+        if (visX > 1.0) {
+            visX = 1.0;
+        }
+        if (visY > 1.0) {
+            visY = 1.0;
+        }
+
+        cropL = (1.0 - visX) * 0.5;
+        cropR = cropL;
+        cropT = (1.0 - visY) * 0.5;
+        cropB = cropT;
+
+        cropL = _gridMaker_clamp(cropL * 100.0, 0, 49.5);
+        cropR = _gridMaker_clamp(cropR * 100.0, 0, 49.5);
+        cropT = _gridMaker_clamp(cropT * 100.0, 0, 49.5);
+        cropB = _gridMaker_clamp(cropB * 100.0, 0, 49.5);
+
+        visX = 1.0 - (cropL + cropR) / 100.0;
+        visY = 1.0 - (cropT + cropB) / 100.0;
+
+        var x = frameW * (leftNorm + widthNorm * 0.5);
+        var y = frameH * (topNorm + heightNorm * 0.5);
+        dbg("Computed placement mode kind=" + placementKind + " modeHint=" + placementModeHint + " assumeFrameFit=" + assumeFrameFit + " intrinsicScaleFactor=" + intrinsicScaleFactor.toFixed(6));
+        dbg("Computed source size " + sourceW.toFixed(3) + "x" + sourceH.toFixed(3) + " baseDisplayAt100=" + baseDisplayW.toFixed(3) + "x" + baseDisplayH.toFixed(3));
+        dbg("Computed target scale width=" + scaleForWidth.toFixed(3) + " height=" + scaleForHeight.toFixed(3) + " chosen=" + scale.toFixed(3));
+        dbg("Computed scaled size " + scaledW.toFixed(3) + "x" + scaledH.toFixed(3) + " targetCell=" + cellW.toFixed(3) + "x" + cellH.toFixed(3));
+        dbg("Computed crop LRTB=" + cropL.toFixed(3) + "," + cropR.toFixed(3) + "," + cropT.toFixed(3) + "," + cropB.toFixed(3) + " visX=" + visX.toFixed(6) + " visY=" + visY.toFixed(6));
+        dbg("Computed position x=" + x.toFixed(3) + " y=" + y.toFixed(3));
+
+        if (!_gridMaker_setPlacement(placementComp, scale, x, y, frameW, frameH, debugLines)) {
+            dbg("Placement write failed");
+            return _gridMaker_result("ERR", "placement_apply_failed", {
+                x: x.toFixed(3),
+                y: y.toFixed(3)
+            }, debugLines);
+        }
+        _gridMaker_setCrop(cropComp, cropL, cropR, cropT, cropB);
+        dbg("Placement write succeeded");
+        dbg("Readback scale=" + _gridMaker_getCurrentScalePercent(placementComp));
+        dbg("Readback position=" + _gridMaker_pointToString(_gridMaker_getCurrentPosition(placementComp)));
+        _gridMaker_dumpPlacementComponents(clip, debugLines, "AFTER");
+
+        return _gridMaker_result("OK", "cell_applied", {
+            scale: scale.toFixed(2)
+        }, debugLines);
+    } catch (e) {
+        dbg("EXCEPTION " + e);
+        return _gridMaker_result("ERR", "exception", { message: e }, debugLines);
+    }
+}
+
 function _gridMaker_findQEClip(qSeq, seq, clip) {
     var targetStart = _gridMaker_timeToSeconds(clip.start);
     var targetEnd = _gridMaker_timeToSeconds(clip.end);
@@ -1928,6 +2212,265 @@ function _gridMaker_serializeDetails(details) {
     }
 
     return parts.join("&");
+}
+
+function _gridMaker_jsonStringify(value) {
+    try {
+        return JSON.stringify(value);
+    } catch (e1) {
+        return "{}";
+    }
+}
+
+function _gridMaker_jsonParse(text) {
+    if (!text) {
+        return null;
+    }
+    try {
+        return JSON.parse(text);
+    } catch (e1) {}
+    try {
+        return eval("(" + text + ")");
+    } catch (e2) {}
+    return null;
+}
+
+function _gridMaker_designerSettingsFolder() {
+    var base = Folder.userData;
+    if (!base) {
+        return null;
+    }
+    var root = new Folder(base.fsName + "/PremiereGridMaker/settings");
+    if (!root.exists) {
+        root.create();
+    }
+    return root;
+}
+
+function _gridMaker_designerStoreFile() {
+    var folder = _gridMaker_designerSettingsFolder();
+    if (!folder) {
+        return null;
+    }
+    return new File(folder.fsName + "/designer-configs.json");
+}
+
+function _gridMaker_designerRatioKey(ratioW, ratioH) {
+    ratioW = _gridMaker_toNumber(ratioW);
+    ratioH = _gridMaker_toNumber(ratioH);
+    if (!_gridMaker_isFiniteNumber(ratioW) || !_gridMaker_isFiniteNumber(ratioH) || !(ratioW > 0) || !(ratioH > 0)) {
+        return "16x9";
+    }
+    return String(Math.round(ratioW * 1000)) + "x" + String(Math.round(ratioH * 1000));
+}
+
+function _gridMaker_designerReadStore() {
+    var file = _gridMaker_designerStoreFile();
+    if (!file) {
+        return { configs: [] };
+    }
+    if (!file.exists) {
+        return { configs: [] };
+    }
+    try {
+        file.encoding = "UTF-8";
+        file.open("r");
+        var raw = file.read();
+        file.close();
+        var parsed = _gridMaker_jsonParse(raw);
+        if (!parsed || !parsed.configs || !(parsed.configs instanceof Array)) {
+            return { configs: [] };
+        }
+        return parsed;
+    } catch (e1) {
+        try { file.close(); } catch (e2) {}
+        return { configs: [] };
+    }
+}
+
+function _gridMaker_designerWriteStore(store) {
+    var file = _gridMaker_designerStoreFile();
+    if (!file) {
+        return false;
+    }
+    try {
+        file.encoding = "UTF-8";
+        file.open("w");
+        file.write(_gridMaker_jsonStringify(store));
+        file.close();
+        return true;
+    } catch (e1) {
+        try { file.close(); } catch (e2) {}
+        return false;
+    }
+}
+
+function _gridMaker_designerSanitizeId(raw) {
+    var base = String(raw || "").replace(/[^a-zA-Z0-9_-]/g, "");
+    if (!base) {
+        base = "cfg_" + (new Date().getTime());
+    }
+    return base;
+}
+
+function _gridMaker_designerNormalizeBlocks(rawBlocks) {
+    var out = [];
+    if (!(rawBlocks instanceof Array)) {
+        return out;
+    }
+    for (var i = 0; i < rawBlocks.length; i++) {
+        var b = rawBlocks[i];
+        if (!b) {
+            continue;
+        }
+        var x = parseInt(b.x, 10);
+        var y = parseInt(b.y, 10);
+        var w = parseInt(b.w, 10);
+        var h = parseInt(b.h, 10);
+        var id = _gridMaker_designerSanitizeId(b.id || ("cell_" + i));
+        if (isNaN(x) || isNaN(y) || isNaN(w) || isNaN(h)) {
+            continue;
+        }
+        if (w < 1 || h < 1) {
+            continue;
+        }
+        if (x < 0 || y < 0) {
+            continue;
+        }
+        if (x + w > 10 || y + h > 10) {
+            continue;
+        }
+        out.push({
+            id: id,
+            x: x,
+            y: y,
+            w: w,
+            h: h
+        });
+    }
+    return out;
+}
+
+function gridMaker_designerListConfigs(ratioW, ratioH) {
+    try {
+        var ratioKey = _gridMaker_designerRatioKey(ratioW, ratioH);
+        var store = _gridMaker_designerReadStore();
+        var list = [];
+        for (var i = 0; i < store.configs.length; i++) {
+            var cfg = store.configs[i];
+            if (!cfg || cfg.ratioKey !== ratioKey) {
+                continue;
+            }
+            list.push({
+                id: cfg.id,
+                name: cfg.name || cfg.id,
+                ratioW: cfg.ratioW,
+                ratioH: cfg.ratioH,
+                blocks: cfg.blocks || [],
+                updatedAt: cfg.updatedAt || ""
+            });
+        }
+        list.sort(function (a, b) {
+            var ta = String(a.updatedAt || "");
+            var tb = String(b.updatedAt || "");
+            if (ta > tb) {
+                return -1;
+            }
+            if (ta < tb) {
+                return 1;
+            }
+            return 0;
+        });
+        return _gridMaker_jsonStringify({ ok: true, configs: list });
+    } catch (e) {
+        return _gridMaker_jsonStringify({ ok: false, message: String(e), configs: [] });
+    }
+}
+
+function gridMaker_designerSaveConfig(payloadJson) {
+    try {
+        var payload = _gridMaker_jsonParse(String(payloadJson || ""));
+        if (!payload) {
+            return _gridMaker_jsonStringify({ ok: false, message: "invalid_payload" });
+        }
+
+        var ratioW = _gridMaker_toNumber(payload.ratioW);
+        var ratioH = _gridMaker_toNumber(payload.ratioH);
+        if (!_gridMaker_isFiniteNumber(ratioW) || !_gridMaker_isFiniteNumber(ratioH) || !(ratioW > 0) || !(ratioH > 0)) {
+            return _gridMaker_jsonStringify({ ok: false, message: "invalid_ratio" });
+        }
+
+        var blocks = _gridMaker_designerNormalizeBlocks(payload.blocks);
+        if (blocks.length < 1) {
+            return _gridMaker_jsonStringify({ ok: false, message: "empty_blocks" });
+        }
+
+        var id = _gridMaker_designerSanitizeId(payload.id);
+        var ratioKey = _gridMaker_designerRatioKey(ratioW, ratioH);
+        var now = (new Date()).toISOString ? (new Date()).toISOString() : String(new Date().getTime());
+        var name = String(payload.name || "").replace(/^\s+|\s+$/g, "");
+        if (!name) {
+            name = "Config " + now;
+        }
+
+        var store = _gridMaker_designerReadStore();
+        var found = false;
+        for (var i = 0; i < store.configs.length; i++) {
+            if (store.configs[i] && store.configs[i].id === id) {
+                store.configs[i].name = name;
+                store.configs[i].ratioW = ratioW;
+                store.configs[i].ratioH = ratioH;
+                store.configs[i].ratioKey = ratioKey;
+                store.configs[i].blocks = blocks;
+                store.configs[i].updatedAt = now;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            store.configs.push({
+                id: id,
+                name: name,
+                ratioW: ratioW,
+                ratioH: ratioH,
+                ratioKey: ratioKey,
+                blocks: blocks,
+                createdAt: now,
+                updatedAt: now
+            });
+        }
+
+        if (!_gridMaker_designerWriteStore(store)) {
+            return _gridMaker_jsonStringify({ ok: false, message: "write_failed" });
+        }
+        return _gridMaker_jsonStringify({ ok: true, id: id });
+    } catch (e) {
+        return _gridMaker_jsonStringify({ ok: false, message: String(e) });
+    }
+}
+
+function gridMaker_designerDeleteConfig(configId) {
+    try {
+        var id = _gridMaker_designerSanitizeId(configId);
+        var store = _gridMaker_designerReadStore();
+        var next = [];
+        var removed = false;
+        for (var i = 0; i < store.configs.length; i++) {
+            var cfg = store.configs[i];
+            if (cfg && cfg.id === id) {
+                removed = true;
+                continue;
+            }
+            next.push(cfg);
+        }
+        store.configs = next;
+        if (!_gridMaker_designerWriteStore(store)) {
+            return _gridMaker_jsonStringify({ ok: false, message: "write_failed" });
+        }
+        return _gridMaker_jsonStringify({ ok: true, removed: removed });
+    } catch (e) {
+        return _gridMaker_jsonStringify({ ok: false, message: String(e) });
+    }
 }
 
 function _gridMaker_isTrustedReleaseZipUrl(url) {

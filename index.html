@@ -11,8 +11,9 @@
     <header class="app-header">
       <div class="title-wrap">
         <h1 data-i18n="app.title">Grid Maker</h1>
-        <span id="appVersion" class="app-version">V1.0.6</span>
+        <span id="appVersion" class="app-version">V1.1.0</span>
       </div>
+      <button id="designerModeBtn" class="header-btn" type="button" data-i18n="designer.mode_off">Grid Designer</button>
       <div class="lang-picker">
         <select id="languageSelect" aria-label="Language"></select>
       </div>
@@ -22,17 +23,19 @@
       <a id="updateLink" class="update-link" href="#" target="_blank" rel="noopener" data-i18n="update.download_notice">New update available (vX.X.X), click here to download.</a>
     </section>
 
-    <section class="panel">
-      <label for="rows" data-i18n="label.rows">Rows (height)</label>
-      <div class="input-row">
-        <input id="rows" type="range" min="1" max="8" value="2" />
-        <input id="rowsNumber" type="number" min="1" max="8" value="2" />
-      </div>
+    <section class="panel controls-panel">
+      <div id="classicGridControls">
+        <label for="rows" data-i18n="label.rows">Rows (height)</label>
+        <div class="input-row">
+          <input id="rows" type="range" min="1" max="10" value="2" />
+          <input id="rowsNumber" type="number" min="1" max="10" value="2" />
+        </div>
 
-      <label for="cols" data-i18n="label.cols">Columns (width)</label>
-      <div class="input-row">
-        <input id="cols" type="range" min="1" max="8" value="2" />
-        <input id="colsNumber" type="number" min="1" max="8" value="2" />
+        <label for="cols" data-i18n="label.cols">Columns (width)</label>
+        <div class="input-row">
+          <input id="cols" type="range" min="1" max="10" value="2" />
+          <input id="colsNumber" type="number" min="1" max="10" value="2" />
+        </div>
       </div>
 
       <label for="ratio" data-i18n="label.ratio">Target source ratio</label>
@@ -47,6 +50,31 @@
       <p class="help" data-i18n="help.cellClick">
         Click a cell below: the selected timeline video clip will be placed automatically.
       </p>
+
+      <div id="designerControls" class="designer-controls" hidden>
+        <div class="designer-actions">
+          <button id="designerEditBtn" type="button" data-i18n="designer.edit_off">Modifier: OFF</button>
+          <button id="designerAddBtn" type="button" data-i18n="designer.add">Ajouter case</button>
+          <button id="designerRemoveBtn" type="button" data-i18n="designer.remove">Supprimer case</button>
+        </div>
+        <div class="designer-actions">
+          <button id="designerNewBtn" type="button" data-i18n="designer.new">Nouvelle config</button>
+          <input id="designerNameInput" type="text" maxlength="64" data-i18n-placeholder="designer.name_placeholder" placeholder="Nom de config" />
+          <button id="designerSaveBtn" type="button" data-i18n="designer.save">Sauvegarder</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="designerGalleryPanel" class="panel" hidden>
+      <div class="grid-header">
+        <strong data-i18n="designer.configs">Configs</strong>
+        <div class="designer-gallery-tools">
+          <label for="designerGallerySize" class="designer-gallery-size-label" data-i18n="designer.gallery_size">Size</label>
+          <input id="designerGallerySize" class="designer-gallery-size" type="range" min="96" max="220" step="2" value="96" />
+          <span id="designerGalleryCount">0</span>
+        </div>
+      </div>
+      <div id="designerGallery" class="designer-gallery"></div>
     </section>
 
     <section class="panel preview-panel">

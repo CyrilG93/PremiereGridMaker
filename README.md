@@ -1,14 +1,16 @@
-# Grid Maker (CEP) - v1.0.6
+# Grid Maker (CEP) - v1.1.0
 
 Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 
 ## Features
 
-- Grid size with two sliders: rows x columns (1 to 8)
+- Grid size with two sliders: rows x columns (1 to 10)
 - Ratio preset selector: `16:9`, `1:1`, `9:16`, `4:5`, `3:2`
 - Clickable live grid preview
 - One-click placement to a target cell using `Transform` + `Crop`
 - No manual position presets required
+- Grid Designer mode (10x10 canvas): irregular layouts with draggable/resizable blocks
+- Designer presets per ratio, saved locally with gallery preview and quick load/delete
 - UI localization: English (default) and French
 - Language selector with flag dropdown
 - Collapsible debug panel (collapsed by default)
@@ -118,6 +120,15 @@ window.PGM_I18N.registerLocale({
 Then include it in `index.html` before `js/main.js`.
 
 ## Changelog
+
+### v1.1.0
+
+- Added full `Grid Designer` mode with irregular block layouts on a `10x10` canvas.
+- Added drag/drop + resize editing flow with `Edit ON/OFF` state and stronger visual feedback.
+- Added local designer preset storage by ratio, with gallery preview, quick load, delete, and size slider.
+- Added custom-cell host placement API for designer blocks with normalized bounds.
+- Increased classic grid limits from `8x8` to `10x10` in UI and placement validation.
+- Improved classic preview responsiveness in small panels (compact rendering and tighter spacing).
 
 ### v1.0.6
 

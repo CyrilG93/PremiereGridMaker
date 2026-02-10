@@ -5,8 +5,9 @@
   var cepBridge = window.cep || null;
   var csInterface = (typeof CSInterface !== "undefined") ? new CSInterface() : null;
   var i18n = window.PGM_I18N || { defaultLocale: "en", locales: {} };
-  var APP_VERSION = "1.0.6";
+  var APP_VERSION = "1.1.0";
   var RELEASE_API_URL = "https://api.github.com/repos/CyrilG93/PremiereGridMaker/releases/latest";
+  var DESIGNER_GRID_SIZE = 10;
 
   var state = {
     rows: 2,
@@ -14,7 +15,18 @@
     ratioW: 16,
     ratioH: 9,
     selectedCell: { row: 0, col: 0 },
-    locale: resolveInitialLocale()
+    locale: resolveInitialLocale(),
+    designer: {
+      enabled: false,
+      editMode: false,
+      blocks: [],
+      selectedBlockId: "",
+      configs: [],
+      activeConfigId: "",
+      nextBlockSeq: 1,
+      loaded: false,
+      gallerySize: resolveInitialGallerySize()
+    }
   };
 
   var statusState = {
@@ -47,6 +59,23 @@
   var appVersion = document.getElementById("appVersion");
   var updateBanner = document.getElementById("updateBanner");
   var updateLink = document.getElementById("updateLink");
+
+  var helpText = document.querySelector(".help");
+  var designerModeBtn = document.getElementById("designerModeBtn");
+  var classicGridControls = document.getElementById("classicGridControls");
+  var designerControls = document.getElementById("designerControls");
+  var designerEditBtn = document.getElementById("designerEditBtn");
+  var designerAddBtn = document.getElementById("designerAddBtn");
+  var designerRemoveBtn = document.getElementById("designerRemoveBtn");
+  var designerNewBtn = document.getElementById("designerNewBtn");
+  var designerSaveBtn = document.getElementById("designerSaveBtn");
+  var designerNameInput = document.getElementById("designerNameInput");
+  var designerGalleryPanel = document.getElementById("designerGalleryPanel");
+  var designerGallery = document.getElementById("designerGallery");
+  var designerGalleryCount = document.getElementById("designerGalleryCount");
+  var designerGallerySize = document.getElementById("designerGallerySize");
+
+  var designerDrag = null;
 
   function getClockStamp() {
     var now = new Date();
@@ -101,6 +130,23 @@
       return keys[0];
     }
     return "en";
+  }
+
+  function resolveInitialGallerySize() {
+    var fallback = 96;
+    var stored = null;
+
+    try {
+      stored = window.localStorage.getItem("pgm.designer.gallerySize");
+    } catch (e1) {
+      stored = null;
+    }
+
+    var parsed = parseInt(stored, 10);
+    if (isNaN(parsed)) {
+      return fallback;
+    }
+    return clampInt(parsed, 96, 220, fallback);
   }
 
   function getLocaleStrings() {
@@ -309,7 +355,6 @@
       return false;
     }
 
-    // First try CEP-native browser open while still in user gesture context.
     if (openExternalUrlFallback(url)) {
       return true;
     }
@@ -393,6 +438,41 @@
     return raw;
   }
 
+  function clampNumber(value, min, max) {
+    var n = parseFloat(value);
+    if (isNaN(n)) {
+      n = min;
+    }
+    if (n < min) {
+      return min;
+    }
+    if (n > max) {
+      return max;
+    }
+    return n;
+  }
+
+  function applyDesignerGallerySize(nextSize, persist) {
+    var size = clampInt(nextSize, 96, 220, 96);
+    state.designer.gallerySize = size;
+
+    if (designerGallery) {
+      designerGallery.style.setProperty("--gallery-card-min", size + "px");
+    }
+    if (designerGallerySize) {
+      designerGallerySize.value = String(size);
+    }
+
+    if (!persist) {
+      return;
+    }
+    try {
+      window.localStorage.setItem("pgm.designer.gallerySize", String(size));
+    } catch (e1) {
+      // Ignore localStorage issues in CEP hosts.
+    }
+  }
+
   function syncValue(inputA, inputB, callback) {
     inputA.addEventListener("input", function () {
       var v = clampInt(inputA.value, parseInt(inputA.min, 10), parseInt(inputA.max, 10), parseInt(inputB.value, 10));
@@ -409,16 +489,169 @@
     });
   }
 
+  function getRatioText() {
+    return state.ratioW + ":" + state.ratioH;
+  }
+
+  function formatPercent(v) {
+    return clampNumber(v, 0, 1).toFixed(6);
+  }
+
+  function normalizeDesignerBlock(raw, fallbackId) {
+    if (!raw) {
+      return null;
+    }
+    var x = parseInt(raw.x, 10);
+    var y = parseInt(raw.y, 10);
+    var w = parseInt(raw.w, 10);
+    var h = parseInt(raw.h, 10);
+    if (isNaN(x) || isNaN(y) || isNaN(w) || isNaN(h)) {
+      return null;
+    }
+    if (w < 1 || h < 1) {
+      return null;
+    }
+    if (x < 0 || y < 0) {
+      return null;
+    }
+    if (x + w > DESIGNER_GRID_SIZE || y + h > DESIGNER_GRID_SIZE) {
+      return null;
+    }
+    return {
+      id: String(raw.id || fallbackId || ("cell_" + Date.now())),
+      x: x,
+      y: y,
+      w: w,
+      h: h
+    };
+  }
+
+  function cloneDesignerBlocks(rawBlocks) {
+    var out = [];
+    if (!rawBlocks || !rawBlocks.length) {
+      return out;
+    }
+    for (var i = 0; i < rawBlocks.length; i += 1) {
+      var block = normalizeDesignerBlock(rawBlocks[i], "cell_" + i);
+      if (block) {
+        out.push(block);
+      }
+    }
+    return out;
+  }
+
+  function findDesignerBlockById(id) {
+    for (var i = 0; i < state.designer.blocks.length; i += 1) {
+      if (state.designer.blocks[i].id === id) {
+        return state.designer.blocks[i];
+      }
+    }
+    return null;
+  }
+
+  function ensureDesignerSelection() {
+    if (findDesignerBlockById(state.designer.selectedBlockId)) {
+      return;
+    }
+    if (state.designer.blocks.length > 0) {
+      state.designer.selectedBlockId = state.designer.blocks[0].id;
+    } else {
+      state.designer.selectedBlockId = "";
+    }
+  }
+
+  function nextDesignerBlockId() {
+    var next;
+    do {
+      next = "cell_" + Date.now() + "_" + state.designer.nextBlockSeq;
+      state.designer.nextBlockSeq += 1;
+    } while (findDesignerBlockById(next));
+    return next;
+  }
+
+  function makeDefaultDesignerBlocks() {
+    return [{ id: nextDesignerBlockId(), x: 0, y: 0, w: DESIGNER_GRID_SIZE, h: DESIGNER_GRID_SIZE }];
+  }
+
+  function adoptDesignerBlocks(blocks) {
+    var next = cloneDesignerBlocks(blocks);
+    if (!next.length) {
+      next = makeDefaultDesignerBlocks();
+    }
+    state.designer.blocks = next;
+    ensureDesignerSelection();
+  }
+
+  function designerBlocksOverlap(a, b) {
+    if (!a || !b) {
+      return false;
+    }
+    return (a.x < b.x + b.w) &&
+      (a.x + a.w > b.x) &&
+      (a.y < b.y + b.h) &&
+      (a.y + a.h > b.y);
+  }
+
+  function designerCanPlace(candidate, ignoreId) {
+    if (!candidate) {
+      return false;
+    }
+    if (candidate.x < 0 || candidate.y < 0 || candidate.w < 1 || candidate.h < 1) {
+      return false;
+    }
+    if (candidate.x + candidate.w > DESIGNER_GRID_SIZE || candidate.y + candidate.h > DESIGNER_GRID_SIZE) {
+      return false;
+    }
+    for (var i = 0; i < state.designer.blocks.length; i += 1) {
+      var other = state.designer.blocks[i];
+      if (ignoreId && other.id === ignoreId) {
+        continue;
+      }
+      if (designerBlocksOverlap(candidate, other)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   function updateSummary() {
-    var ratioText = state.ratioW + ":" + state.ratioH;
-    summary.textContent = t("summary.format", {
-      rows: state.rows,
-      cols: state.cols,
-      ratio: ratioText
-    });
-    grid.style.gridTemplateRows = "repeat(" + state.rows + ", 1fr)";
-    grid.style.gridTemplateColumns = "repeat(" + state.cols + ", 1fr)";
+    var ratioText = getRatioText();
+    if (state.designer.enabled) {
+      var activeName = designerNameInput && designerNameInput.value ? designerNameInput.value : t("designer.config_untitled");
+      summary.textContent = t("summary.designer_format", {
+        cells: state.designer.blocks.length,
+        name: activeName,
+        ratio: ratioText
+      });
+    } else {
+      summary.textContent = t("summary.format", {
+        rows: state.rows,
+        cols: state.cols,
+        ratio: ratioText
+      });
+    }
     grid.style.aspectRatio = state.ratioW + " / " + state.ratioH;
+  }
+
+  function updateClassicGridDensity(gridWidth, gridHeight) {
+    if (!grid || state.designer.enabled) {
+      return;
+    }
+
+    var safeW = Math.max(1, gridWidth || grid.clientWidth || 1);
+    var safeH = Math.max(1, gridHeight || grid.clientHeight || 1);
+    var minCell = Math.min(safeW / Math.max(1, state.cols), safeH / Math.max(1, state.rows));
+    var gap = 2;
+
+    if (minCell < 22) {
+      gap = 1;
+    }
+    if (minCell < 14) {
+      gap = 0;
+    }
+
+    grid.style.gap = gap + "px";
+    grid.classList.toggle("classic-compact", minCell < 15);
   }
 
   function fitGridPreview() {
@@ -446,6 +679,7 @@
 
     grid.style.width = Math.max(1, Math.floor(nextWidth)) + "px";
     grid.style.height = Math.max(1, Math.floor(nextHeight)) + "px";
+    updateClassicGridDensity(nextWidth, nextHeight);
   }
 
   function schedulePreviewFit() {
@@ -533,7 +767,7 @@
             hostDebug: hostDebug
           };
         }
-        return { kind: "ok", key: "status.ok.generic", vars: {}, hostDebug: hostDebug, code: code };
+        return { kind: "ok", key: "status.ok.generic", vars: {}, hostDebug: hostDebug, code: code, details: details };
       }
 
       if (code === "exception") {
@@ -566,9 +800,20 @@
     return { kind: "", raw: result, hostDebug: "", code: "" };
   }
 
-  function applyCell(row, col) {
+  function parseJsonSafe(raw) {
+    if (!raw) {
+      return null;
+    }
+    try {
+      return JSON.parse(raw);
+    } catch (e1) {
+      return null;
+    }
+  }
+
+  function applyClassicCell(row, col) {
     state.selectedCell = { row: row, col: col };
-    renderGrid();
+    renderPreview();
 
     var script = "gridMaker_applyToSelectedClip(" +
       row + "," +
@@ -579,7 +824,7 @@
       state.ratioH +
       ")";
 
-    appendDebug("UI> click cell row=" + (row + 1) + " col=" + (col + 1) + " grid=" + state.rows + "x" + state.cols + " ratio=" + state.ratioW + ":" + state.ratioH);
+    appendDebug("UI> click cell row=" + (row + 1) + " col=" + (col + 1) + " grid=" + state.rows + "x" + state.cols + " ratio=" + getRatioText());
     appendDebug("UI> evalScript: " + script);
     setStatusKey("status.applying", {}, "");
 
@@ -605,9 +850,167 @@
     });
   }
 
-  function renderGrid() {
+  function applyDesignerBlock(blockId) {
+    var block = findDesignerBlockById(blockId);
+    if (!block) {
+      setStatusKey("status.err.unknown", {}, "err");
+      return;
+    }
+
+    state.designer.selectedBlockId = blockId;
+    renderPreview();
+
+    var leftNorm = formatPercent(block.x / DESIGNER_GRID_SIZE);
+    var topNorm = formatPercent(block.y / DESIGNER_GRID_SIZE);
+    var widthNorm = formatPercent(block.w / DESIGNER_GRID_SIZE);
+    var heightNorm = formatPercent(block.h / DESIGNER_GRID_SIZE);
+
+    var script = "gridMaker_applyToSelectedCustomCell(" +
+      leftNorm + "," +
+      topNorm + "," +
+      widthNorm + "," +
+      heightNorm + "," +
+      state.ratioW + "," +
+      state.ratioH +
+      ")";
+
+    appendDebug("UI> click designer cell id=" + block.id + " x=" + block.x + " y=" + block.y + " w=" + block.w + " h=" + block.h + " ratio=" + getRatioText());
+    appendDebug("UI> evalScript: " + script);
+    setStatusKey("status.applying", {}, "");
+
+    callHost(script, function (result) {
+      appendDebug("HOST< raw: " + (result || "<empty>"));
+      var parsed = parseHostResponse(result);
+      appendHostDebug(parsed.hostDebug);
+
+      if (parsed.kind === "ok" && parsed.code === "cell_applied") {
+        appendDebug("UI> applied designer cell id=" + block.id + " scale=" + ((parsed.details && parsed.details.scale) || "") + "%");
+      }
+
+      if (parsed.raw) {
+        setStatusRaw(parsed.raw, parsed.kind);
+        return;
+      }
+
+      setStatusKey(parsed.key, parsed.vars, parsed.kind);
+    });
+  }
+
+  function startDesignerDrag(event, blockId, action) {
+    if (!state.designer.enabled || !state.designer.editMode) {
+      return;
+    }
+    if (!event || event.button !== 0) {
+      return;
+    }
+
+    var block = findDesignerBlockById(blockId);
+    if (!block) {
+      return;
+    }
+
+    var rect = grid.getBoundingClientRect();
+    if (!(rect.width > 0) || !(rect.height > 0)) {
+      return;
+    }
+
+    state.designer.selectedBlockId = blockId;
+    designerDrag = {
+      id: blockId,
+      action: action,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      stageRect: rect,
+      startBlock: {
+        id: block.id,
+        x: block.x,
+        y: block.y,
+        w: block.w,
+        h: block.h
+      }
+    };
+
+    document.body.classList.add("designer-dragging");
+    window.addEventListener("mousemove", onDesignerDragMove);
+    window.addEventListener("mouseup", onDesignerDragEnd);
+    event.preventDefault();
+    event.stopPropagation();
+    renderPreview();
+  }
+
+  function onDesignerDragMove(event) {
+    if (!designerDrag) {
+      return;
+    }
+
+    var base = designerDrag.startBlock;
+    var rect = designerDrag.stageRect;
+    var stepX = rect.width / DESIGNER_GRID_SIZE;
+    var stepY = rect.height / DESIGNER_GRID_SIZE;
+    if (!(stepX > 0) || !(stepY > 0)) {
+      return;
+    }
+
+    var dxCells = Math.round((event.clientX - designerDrag.startClientX) / stepX);
+    var dyCells = Math.round((event.clientY - designerDrag.startClientY) / stepY);
+    var candidate = {
+      id: base.id,
+      x: base.x,
+      y: base.y,
+      w: base.w,
+      h: base.h
+    };
+
+    if (designerDrag.action === "move") {
+      candidate.x = clampInt(base.x + dxCells, 0, DESIGNER_GRID_SIZE - base.w, base.x);
+      candidate.y = clampInt(base.y + dyCells, 0, DESIGNER_GRID_SIZE - base.h, base.y);
+    } else {
+      candidate.w = clampInt(base.w + dxCells, 1, DESIGNER_GRID_SIZE - base.x, base.w);
+      candidate.h = clampInt(base.h + dyCells, 1, DESIGNER_GRID_SIZE - base.y, base.h);
+    }
+
+    if (!designerCanPlace(candidate, candidate.id)) {
+      return;
+    }
+
+    var live = findDesignerBlockById(candidate.id);
+    if (!live) {
+      return;
+    }
+
+    if (live.x === candidate.x && live.y === candidate.y && live.w === candidate.w && live.h === candidate.h) {
+      return;
+    }
+
+    live.x = candidate.x;
+    live.y = candidate.y;
+    live.w = candidate.w;
+    live.h = candidate.h;
+    renderPreview();
+  }
+
+  function onDesignerDragEnd() {
+    if (!designerDrag) {
+      return;
+    }
+    designerDrag = null;
+    document.body.classList.remove("designer-dragging");
+    window.removeEventListener("mousemove", onDesignerDragMove);
+    window.removeEventListener("mouseup", onDesignerDragEnd);
+  }
+
+  function stopDesignerDrag() {
+    if (designerDrag) {
+      onDesignerDragEnd();
+    }
+  }
+
+  function renderClassicGrid() {
+    grid.classList.remove("designer-mode");
     grid.innerHTML = "";
-    updateSummary();
+    grid.style.gridTemplateRows = "repeat(" + state.rows + ", 1fr)";
+    grid.style.gridTemplateColumns = "repeat(" + state.cols + ", 1fr)";
+    grid.classList.remove("classic-compact");
 
     for (var r = 0; r < state.rows; r += 1) {
       for (var c = 0; c < state.cols; c += 1) {
@@ -623,14 +1026,512 @@
 
         (function (row, col) {
           cell.addEventListener("click", function () {
-            applyCell(row, col);
+            applyClassicCell(row, col);
           });
         })(r, c);
 
         grid.appendChild(cell);
       }
     }
+    updateClassicGridDensity();
+  }
+
+  function renderDesignerGrid() {
+    ensureDesignerSelection();
+    grid.classList.add("designer-mode");
+    grid.innerHTML = "";
+    grid.style.gridTemplateRows = "";
+    grid.style.gridTemplateColumns = "";
+
+    if (!state.designer.blocks.length) {
+      adoptDesignerBlocks(makeDefaultDesignerBlocks());
+    }
+
+    var blocks = state.designer.blocks.slice();
+    blocks.sort(function (a, b) {
+      if (a.y !== b.y) {
+        return a.y - b.y;
+      }
+      if (a.x !== b.x) {
+        return a.x - b.x;
+      }
+      return a.id.localeCompare(b.id);
+    });
+
+    for (var i = 0; i < blocks.length; i += 1) {
+      (function (block, index) {
+        var cell = document.createElement("button");
+        cell.type = "button";
+        cell.className = "designer-cell";
+        if (state.designer.selectedBlockId === block.id) {
+          cell.className += " active";
+        }
+        if (state.designer.editMode) {
+          cell.className += " editable";
+        }
+
+        cell.style.left = (block.x * 100 / DESIGNER_GRID_SIZE) + "%";
+        cell.style.top = (block.y * 100 / DESIGNER_GRID_SIZE) + "%";
+        cell.style.width = (block.w * 100 / DESIGNER_GRID_SIZE) + "%";
+        cell.style.height = (block.h * 100 / DESIGNER_GRID_SIZE) + "%";
+        cell.setAttribute("data-id", block.id);
+
+        var label = document.createElement("span");
+        label.className = "designer-cell-label";
+        label.textContent = String(index + 1);
+        cell.appendChild(label);
+
+        if (state.designer.editMode) {
+          var handle = document.createElement("span");
+          handle.className = "designer-resize-handle";
+          handle.title = t("designer.resize_hint");
+          cell.appendChild(handle);
+
+          cell.addEventListener("mousedown", function (event) {
+            var target = event.target;
+            var action = (target && target.className && String(target.className).indexOf("designer-resize-handle") !== -1)
+              ? "resize"
+              : "move";
+            startDesignerDrag(event, block.id, action);
+          });
+        }
+
+        cell.addEventListener("click", function (event) {
+          event.stopPropagation();
+          state.designer.selectedBlockId = block.id;
+          if (state.designer.editMode) {
+            renderPreview();
+            return;
+          }
+          applyDesignerBlock(block.id);
+        });
+
+        grid.appendChild(cell);
+      })(blocks[i], i);
+    }
+  }
+
+  function renderPreview() {
+    updateSummary();
+    if (state.designer.enabled) {
+      renderDesignerGrid();
+    } else {
+      renderClassicGrid();
+    }
+    renderDesignerControlsState();
+    renderDesignerGallery();
     schedulePreviewFit();
+  }
+
+  function renderDesignerControlsState() {
+    if (classicGridControls) {
+      classicGridControls.hidden = !!state.designer.enabled;
+      classicGridControls.style.display = state.designer.enabled ? "none" : "";
+    }
+    if (designerControls) {
+      designerControls.hidden = !state.designer.enabled;
+      designerControls.style.display = state.designer.enabled ? "" : "none";
+    }
+    if (designerGalleryPanel) {
+      designerGalleryPanel.hidden = !state.designer.enabled;
+      designerGalleryPanel.style.display = state.designer.enabled ? "" : "none";
+    }
+
+    if (!designerEditBtn) {
+      return;
+    }
+
+    designerEditBtn.textContent = state.designer.editMode
+      ? t("designer.edit_on")
+      : t("designer.edit_off");
+    designerEditBtn.classList.toggle("edit-on", !!state.designer.editMode);
+    designerEditBtn.classList.toggle("edit-off", !state.designer.editMode);
+
+    if (designerModeBtn) {
+      designerModeBtn.classList.toggle("active", !!state.designer.enabled);
+      designerModeBtn.textContent = state.designer.enabled
+        ? t("designer.mode_on")
+        : t("designer.mode_off");
+    }
+
+    if (helpText) {
+      helpText.textContent = state.designer.enabled
+        ? t("help.designer")
+        : t("help.cellClick");
+    }
+  }
+
+  function renderDesignerGallery() {
+    if (!designerGallery || !designerGalleryCount) {
+      return;
+    }
+
+    if (!state.designer.enabled) {
+      designerGallery.innerHTML = "";
+      designerGalleryCount.textContent = "0";
+      return;
+    }
+
+    designerGallery.innerHTML = "";
+    var configs = state.designer.configs || [];
+    designerGalleryCount.textContent = String(configs.length);
+
+    if (!configs.length) {
+      var empty = document.createElement("div");
+      empty.className = "designer-gallery-empty";
+      empty.textContent = t("designer.gallery_empty");
+      designerGallery.appendChild(empty);
+      return;
+    }
+
+    for (var i = 0; i < configs.length; i += 1) {
+      (function (cfg) {
+        var item = document.createElement("button");
+        item.type = "button";
+        item.className = "designer-gallery-item";
+        if (cfg.id === state.designer.activeConfigId) {
+          item.className += " active";
+        }
+
+        var thumb = document.createElement("div");
+        thumb.className = "designer-thumb";
+        var blocks = cloneDesignerBlocks(cfg.blocks || []);
+        for (var bi = 0; bi < blocks.length; bi += 1) {
+          var block = blocks[bi];
+          var piece = document.createElement("span");
+          piece.className = "designer-thumb-block";
+          piece.style.left = (block.x * 100 / DESIGNER_GRID_SIZE) + "%";
+          piece.style.top = (block.y * 100 / DESIGNER_GRID_SIZE) + "%";
+          piece.style.width = (block.w * 100 / DESIGNER_GRID_SIZE) + "%";
+          piece.style.height = (block.h * 100 / DESIGNER_GRID_SIZE) + "%";
+          thumb.appendChild(piece);
+        }
+
+        var meta = document.createElement("div");
+        meta.className = "designer-gallery-meta";
+
+        var name = document.createElement("strong");
+        name.textContent = cfg.name || cfg.id;
+
+        var info = document.createElement("span");
+        info.textContent = t("designer.gallery_cells", { count: blocks.length });
+
+        meta.appendChild(name);
+        meta.appendChild(info);
+
+        item.appendChild(thumb);
+        item.appendChild(meta);
+
+        item.addEventListener("click", function () {
+          loadDesignerConfig(cfg.id);
+        });
+
+        item.addEventListener("contextmenu", function (event) {
+          event.preventDefault();
+          deleteDesignerConfig(cfg.id, cfg.name || cfg.id);
+        });
+
+        designerGallery.appendChild(item);
+      })(configs[i]);
+    }
+  }
+
+  function setDesignerMode(enabled) {
+    var next = !!enabled;
+    if (state.designer.enabled === next) {
+      return;
+    }
+
+    state.designer.enabled = next;
+    stopDesignerDrag();
+
+    if (classicGridControls) {
+      classicGridControls.hidden = next;
+    }
+    if (designerControls) {
+      designerControls.hidden = !next;
+    }
+    if (designerGalleryPanel) {
+      designerGalleryPanel.hidden = !next;
+    }
+
+    appendDebug("UI> designer mode " + (next ? "enabled" : "disabled"));
+
+    if (next) {
+      if (!state.designer.blocks.length) {
+        adoptDesignerBlocks(makeDefaultDesignerBlocks());
+      }
+      loadDesignerConfigs(state.designer.activeConfigId, true);
+      setStatusKey("status.designer_ready", {}, "ok");
+    } else {
+      setStatusKey("status.ready", {}, "");
+    }
+
+    renderPreview();
+  }
+
+  function loadDesignerConfig(configId) {
+    var list = state.designer.configs || [];
+    for (var i = 0; i < list.length; i += 1) {
+      if (list[i].id === configId) {
+        state.designer.activeConfigId = list[i].id;
+        adoptDesignerBlocks(list[i].blocks || []);
+        if (designerNameInput) {
+          designerNameInput.value = list[i].name || "";
+        }
+        appendDebug("UI> loaded designer config id=" + list[i].id + " name=" + (list[i].name || ""));
+        setStatusKey("status.designer_config_loaded", { name: list[i].name || list[i].id }, "ok");
+        renderPreview();
+        return;
+      }
+    }
+  }
+
+  function adoptDesignerConfigList(configs, preferredId, autoPick) {
+    state.designer.configs = configs || [];
+
+    if (!state.designer.configs.length) {
+      state.designer.activeConfigId = "";
+      if (designerNameInput && !designerNameInput.value) {
+        designerNameInput.value = t("designer.default_name");
+      }
+      renderPreview();
+      return;
+    }
+
+    var targetId = preferredId || state.designer.activeConfigId;
+    var found = null;
+
+    if (targetId) {
+      for (var i = 0; i < state.designer.configs.length; i += 1) {
+        if (state.designer.configs[i].id === targetId) {
+          found = state.designer.configs[i];
+          break;
+        }
+      }
+    }
+
+    if (!found && autoPick) {
+      found = state.designer.configs[0];
+    }
+
+    if (found) {
+      state.designer.activeConfigId = found.id;
+      adoptDesignerBlocks(found.blocks || []);
+      if (designerNameInput) {
+        designerNameInput.value = found.name || "";
+      }
+    }
+
+    renderPreview();
+  }
+
+  function loadDesignerConfigs(preferredId, autoPick) {
+    var script = "gridMaker_designerListConfigs(" + state.ratioW + "," + state.ratioH + ")";
+    appendDebug("UI> evalScript: " + script);
+
+    callHost(script, function (result) {
+      appendDebug("HOST< raw(designer-list): " + (result || "<empty>"));
+      var payload = parseJsonSafe(result);
+      if (!payload || !payload.ok) {
+        appendDebug("UI> designer list failed");
+        setStatusKey("status.designer_load_failed", {}, "err");
+        return;
+      }
+
+      var configs = [];
+      var rawConfigs = payload.configs || [];
+      for (var i = 0; i < rawConfigs.length; i += 1) {
+        var cfg = rawConfigs[i] || {};
+        configs.push({
+          id: String(cfg.id || ("cfg_" + i)),
+          name: String(cfg.name || cfg.id || ""),
+          ratioW: cfg.ratioW,
+          ratioH: cfg.ratioH,
+          blocks: cloneDesignerBlocks(cfg.blocks || []),
+          updatedAt: String(cfg.updatedAt || "")
+        });
+      }
+
+      state.designer.loaded = true;
+      appendDebug("UI> designer configs loaded count=" + configs.length + " ratio=" + getRatioText());
+      adoptDesignerConfigList(configs, preferredId, !!autoPick);
+    });
+  }
+
+  function saveDesignerConfig() {
+    if (!state.designer.blocks.length) {
+      setStatusKey("status.designer_empty", {}, "err");
+      return;
+    }
+
+    var name = (designerNameInput && designerNameInput.value) ? designerNameInput.value.trim() : "";
+    if (!name) {
+      name = t("designer.default_name");
+      if (designerNameInput) {
+        designerNameInput.value = name;
+      }
+    }
+
+    var payload = {
+      id: state.designer.activeConfigId || "",
+      name: name,
+      ratioW: state.ratioW,
+      ratioH: state.ratioH,
+      blocks: cloneDesignerBlocks(state.designer.blocks)
+    };
+
+    var script = "gridMaker_designerSaveConfig(" + quoteForEvalScript(JSON.stringify(payload)) + ")";
+    appendDebug("UI> evalScript: gridMaker_designerSaveConfig(<payload>)");
+    setStatusKey("status.designer_saving", {}, "");
+
+    callHost(script, function (result) {
+      appendDebug("HOST< raw(designer-save): " + (result || "<empty>"));
+      var parsed = parseJsonSafe(result);
+      if (!parsed || !parsed.ok || !parsed.id) {
+        appendDebug("UI> designer save failed");
+        setStatusKey("status.designer_save_failed", {}, "err");
+        return;
+      }
+
+      state.designer.activeConfigId = String(parsed.id);
+      appendDebug("UI> designer config saved id=" + state.designer.activeConfigId);
+      setStatusKey("status.designer_saved", { name: name }, "ok");
+      loadDesignerConfigs(state.designer.activeConfigId, true);
+    });
+  }
+
+  function deleteDesignerConfig(configId, displayName) {
+    if (!configId) {
+      return;
+    }
+
+    var question = t("designer.confirm_delete", { name: displayName || configId });
+    if (!window.confirm(question)) {
+      return;
+    }
+
+    var script = "gridMaker_designerDeleteConfig(" + quoteForEvalScript(configId) + ")";
+    appendDebug("UI> evalScript: " + script);
+
+    callHost(script, function (result) {
+      appendDebug("HOST< raw(designer-delete): " + (result || "<empty>"));
+      var parsed = parseJsonSafe(result);
+      if (!parsed || !parsed.ok) {
+        appendDebug("UI> designer delete failed");
+        setStatusKey("status.designer_delete_failed", {}, "err");
+        return;
+      }
+
+      appendDebug("UI> designer config deleted id=" + configId);
+      if (state.designer.activeConfigId === configId) {
+        state.designer.activeConfigId = "";
+        adoptDesignerBlocks(makeDefaultDesignerBlocks());
+        if (designerNameInput) {
+          designerNameInput.value = t("designer.default_name");
+        }
+      }
+      setStatusKey("status.designer_deleted", {}, "ok");
+      loadDesignerConfigs(state.designer.activeConfigId, true);
+    });
+  }
+
+  function createNewDesignerConfig() {
+    state.designer.activeConfigId = "";
+    state.designer.editMode = true;
+    stopDesignerDrag();
+    adoptDesignerBlocks(makeDefaultDesignerBlocks());
+    if (designerNameInput) {
+      designerNameInput.value = t("designer.default_name");
+    }
+    appendDebug("UI> new designer config draft");
+    setStatusKey("status.designer_new", {}, "ok");
+    renderPreview();
+  }
+
+  function findFirstDesignerFreePosition(width, height) {
+    for (var y = 0; y <= DESIGNER_GRID_SIZE - height; y += 1) {
+      for (var x = 0; x <= DESIGNER_GRID_SIZE - width; x += 1) {
+        var candidate = { id: "", x: x, y: y, w: width, h: height };
+        if (designerCanPlace(candidate, "")) {
+          return { x: x, y: y, w: width, h: height };
+        }
+      }
+    }
+    return null;
+  }
+
+  function addDesignerBlock() {
+    var preferredSizes = [
+      { w: 2, h: 2 },
+      { w: 2, h: 1 },
+      { w: 1, h: 2 },
+      { w: 1, h: 1 }
+    ];
+
+    var slot = null;
+    for (var i = 0; i < preferredSizes.length; i += 1) {
+      slot = findFirstDesignerFreePosition(preferredSizes[i].w, preferredSizes[i].h);
+      if (slot) {
+        break;
+      }
+    }
+
+    if (!slot) {
+      setStatusKey("status.designer_no_space", {}, "err");
+      return;
+    }
+
+    var block = {
+      id: nextDesignerBlockId(),
+      x: slot.x,
+      y: slot.y,
+      w: slot.w,
+      h: slot.h
+    };
+
+    state.designer.blocks.push(block);
+    state.designer.selectedBlockId = block.id;
+    appendDebug("UI> designer block added id=" + block.id + " x=" + block.x + " y=" + block.y + " w=" + block.w + " h=" + block.h);
+    setStatusKey("status.designer_block_added", {}, "ok");
+    renderPreview();
+  }
+
+  function removeSelectedDesignerBlock() {
+    var selectedId = state.designer.selectedBlockId;
+    if (!selectedId) {
+      setStatusKey("status.designer_block_select", {}, "err");
+      return;
+    }
+
+    var next = [];
+    var removed = false;
+    for (var i = 0; i < state.designer.blocks.length; i += 1) {
+      if (state.designer.blocks[i].id === selectedId) {
+        removed = true;
+        continue;
+      }
+      next.push(state.designer.blocks[i]);
+    }
+
+    if (!removed) {
+      setStatusKey("status.designer_block_select", {}, "err");
+      return;
+    }
+
+    state.designer.blocks = next;
+    ensureDesignerSelection();
+    appendDebug("UI> designer block removed id=" + selectedId);
+    setStatusKey("status.designer_block_removed", {}, "ok");
+    renderPreview();
+  }
+
+  function toggleDesignerEditMode() {
+    state.designer.editMode = !state.designer.editMode;
+    stopDesignerDrag();
+    appendDebug("UI> designer edit mode " + (state.designer.editMode ? "ON" : "OFF"));
+    setStatusKey(state.designer.editMode ? "status.designer_edit_on" : "status.designer_edit_off", {}, "ok");
+    renderPreview();
   }
 
   function renderStaticTexts() {
@@ -639,6 +1540,13 @@
       var node = nodes[i];
       var key = node.getAttribute("data-i18n");
       node.textContent = t(key);
+    }
+
+    var placeholders = document.querySelectorAll("[data-i18n-placeholder]");
+    for (var j = 0; j < placeholders.length; j += 1) {
+      var input = placeholders[j];
+      var pkey = input.getAttribute("data-i18n-placeholder");
+      input.setAttribute("placeholder", t(pkey));
     }
   }
 
@@ -683,7 +1591,7 @@
     }
 
     renderStaticTexts();
-    renderGrid();
+    renderPreview();
     refreshStatus();
     refreshUpdateBanner();
   }
@@ -693,7 +1601,7 @@
     if (state.selectedCell.row >= v) {
       state.selectedCell.row = v - 1;
     }
-    renderGrid();
+    renderPreview();
   });
 
   syncValue(colsRange, colsNumber, function (v) {
@@ -701,14 +1609,18 @@
     if (state.selectedCell.col >= v) {
       state.selectedCell.col = v - 1;
     }
-    renderGrid();
+    renderPreview();
   });
 
   ratio.addEventListener("change", function () {
     var next = parseRatio(ratio.value);
     state.ratioW = next.w;
     state.ratioH = next.h;
-    renderGrid();
+    appendDebug("UI> ratio changed to " + ratio.value);
+    if (state.designer.enabled) {
+      loadDesignerConfigs("", true);
+    }
+    renderPreview();
   });
 
   window.addEventListener("resize", function () {
@@ -726,10 +1638,6 @@
     setLocale(languageSelect.value);
   });
 
-  ratio.addEventListener("change", function () {
-    appendDebug("UI> ratio changed to " + ratio.value);
-  });
-
   rowsNumber.addEventListener("change", function () {
     appendDebug("UI> rows changed to " + rowsNumber.value);
   });
@@ -737,6 +1645,82 @@
   colsNumber.addEventListener("change", function () {
     appendDebug("UI> cols changed to " + colsNumber.value);
   });
+
+  if (grid) {
+    grid.addEventListener("click", function (event) {
+      if (!state.designer.enabled || !state.designer.editMode) {
+        return;
+      }
+      if (event.target === grid) {
+        state.designer.selectedBlockId = "";
+        renderPreview();
+      }
+    });
+  }
+
+  if (designerModeBtn) {
+    designerModeBtn.addEventListener("click", function () {
+      setDesignerMode(!state.designer.enabled);
+    });
+  }
+
+  if (designerEditBtn) {
+    designerEditBtn.addEventListener("click", function () {
+      if (!state.designer.enabled) {
+        return;
+      }
+      toggleDesignerEditMode();
+    });
+  }
+
+  if (designerAddBtn) {
+    designerAddBtn.addEventListener("click", function () {
+      if (!state.designer.enabled) {
+        return;
+      }
+      addDesignerBlock();
+    });
+  }
+
+  if (designerRemoveBtn) {
+    designerRemoveBtn.addEventListener("click", function () {
+      if (!state.designer.enabled) {
+        return;
+      }
+      removeSelectedDesignerBlock();
+    });
+  }
+
+  if (designerNewBtn) {
+    designerNewBtn.addEventListener("click", function () {
+      if (!state.designer.enabled) {
+        return;
+      }
+      createNewDesignerConfig();
+    });
+  }
+
+  if (designerSaveBtn) {
+    designerSaveBtn.addEventListener("click", function () {
+      if (!state.designer.enabled) {
+        return;
+      }
+      saveDesignerConfig();
+    });
+  }
+
+  if (designerNameInput) {
+    designerNameInput.addEventListener("input", function () {
+      updateSummary();
+    });
+  }
+
+  if (designerGallerySize) {
+    designerGallerySize.addEventListener("input", function () {
+      applyDesignerGallerySize(designerGallerySize.value, true);
+      appendDebug("UI> designer gallery size changed to " + designerGallerySize.value);
+    });
+  }
 
   copyDebugBtn.addEventListener("click", function () {
     var text = debugLog ? debugLog.value : "";
@@ -798,12 +1782,27 @@
         return;
       }
 
-      // Keep href synced so native anchor fallback can still work.
       updateLink.href = url;
 
       openExternalUrl(url);
       appendDebug("UI> native anchor fallback remains enabled");
     });
+  }
+
+  applyDesignerGallerySize(state.designer.gallerySize, false);
+  if (classicGridControls) {
+    classicGridControls.style.display = "";
+  }
+  if (designerControls) {
+    designerControls.style.display = "none";
+  }
+  if (designerGalleryPanel) {
+    designerGalleryPanel.style.display = "none";
+  }
+
+  adoptDesignerBlocks(makeDefaultDesignerBlocks());
+  if (designerNameInput) {
+    designerNameInput.value = t("designer.default_name");
   }
 
   renderLanguageOptions();
