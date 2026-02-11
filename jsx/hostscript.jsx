@@ -90,6 +90,25 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
             dbg("QE sequence unavailable (non-blocking unless effect ensure is required)");
         }
 
+        if (!transformComp) {
+            if (!qSeq) {
+                dbg("QE sequence unavailable (transform required)");
+                return _gridMaker_result("ERR", "qe_unavailable", null, debugLines);
+            }
+            if (!qClip) {
+                dbg("QE clip not found (transform required)");
+                return _gridMaker_result("ERR", "qe_clip_not_found", null, debugLines);
+            }
+            transformComp = _gridMaker_ensureManagedEffect(
+                clip,
+                qClip,
+                "transform",
+                _gridMaker_transformEffectLookupNames(),
+                debugLines
+            );
+            dbg("Transform component after ensure=" + _gridMaker_componentLabel(transformComp));
+        }
+
         if (!cropComp || !placementComp) {
             if (!qSeq) {
                 dbg("QE sequence unavailable");
@@ -121,10 +140,10 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
             return _gridMaker_result("ERR", "motion_effect_unavailable", null, debugLines);
         }
         if (!transformComp) {
-            dbg("Transform effect unavailable; continuing with Motion+Crop only");
-        } else {
-            dbg("Transform strategy: added/kept as neutral effect (no parameter writes)");
+            dbg("Transform effect unavailable (required)");
+            return _gridMaker_result("ERR", "transform_effect_unavailable", null, debugLines);
         }
+        dbg("Transform strategy: required and kept as neutral effect (no parameter writes)");
         dbg("Placement strategy: Motion only");
 
         var frameSize = _gridMaker_getSequenceFrameSize(seq, qSeq);
@@ -375,6 +394,25 @@ function gridMaker_applyToSelectedCustomCell(leftNorm, topNorm, widthNorm, heigh
             dbg("QE sequence unavailable (non-blocking unless effect ensure is required)");
         }
 
+        if (!transformComp) {
+            if (!qSeq) {
+                dbg("QE sequence unavailable (transform required)");
+                return _gridMaker_result("ERR", "qe_unavailable", null, debugLines);
+            }
+            if (!qClip) {
+                dbg("QE clip not found (transform required)");
+                return _gridMaker_result("ERR", "qe_clip_not_found", null, debugLines);
+            }
+            transformComp = _gridMaker_ensureManagedEffect(
+                clip,
+                qClip,
+                "transform",
+                _gridMaker_transformEffectLookupNames(),
+                debugLines
+            );
+            dbg("Transform component after ensure=" + _gridMaker_componentLabel(transformComp));
+        }
+
         if (!cropComp || !placementComp) {
             if (!qSeq) {
                 dbg("QE sequence unavailable");
@@ -406,10 +444,10 @@ function gridMaker_applyToSelectedCustomCell(leftNorm, topNorm, widthNorm, heigh
             return _gridMaker_result("ERR", "motion_effect_unavailable", null, debugLines);
         }
         if (!transformComp) {
-            dbg("Transform effect unavailable; continuing with Motion+Crop only");
-        } else {
-            dbg("Transform strategy: added/kept as neutral effect (no parameter writes)");
+            dbg("Transform effect unavailable (required)");
+            return _gridMaker_result("ERR", "transform_effect_unavailable", null, debugLines);
         }
+        dbg("Transform strategy: required and kept as neutral effect (no parameter writes)");
         dbg("Placement strategy: Motion only");
 
         var frameSize = _gridMaker_getSequenceFrameSize(seq, qSeq);
@@ -828,7 +866,11 @@ function _gridMaker_ensureManagedEffect(clip, qClip, type, lookupNames, debugLin
         if (candidate) {
             return candidate;
         }
-        beforeType = afterType;
+
+        // Effect insertion can be async/laggy in some Premiere builds.
+        // Stop stacking duplicate adds and wait for component refresh below.
+        _gridMaker_debugPush(debugLines, type + " add acknowledged without immediate candidate; waiting before additional insertions");
+        break;
     }
 
     var fallback = _gridMaker_waitForManagedEffect(clip, type, 5, 20, debugLines);
@@ -917,12 +959,24 @@ function _gridMaker_componentMatchesType(component, type) {
     } catch (e2) {}
 
     if (type === "transform") {
-        return _gridMaker_componentMatchScore(
+        if (_gridMaker_isMotionComponentExplicit(component)) {
+            return false;
+        }
+
+        var transformScore = _gridMaker_componentMatchScore(
             displayName,
             matchName,
             ["transform", "transformation", "trasform", "transformar", "transformier"],
             ["adbe transform", "adbe geometry2", "ae.adbe geometry2"]
-        ) >= 0;
+        );
+        if (transformScore >= 0) {
+            return true;
+        }
+
+        if (_gridMaker_componentHasTransformProps(component)) {
+            return true;
+        }
+        return false;
     }
 
     if (type === "crop") {
@@ -950,6 +1004,41 @@ function _gridMaker_componentMatchesType(component, type) {
     }
 
     return false;
+}
+
+function _gridMaker_componentHasTransformProps(component) {
+    if (!component || !component.properties || component.properties.numItems < 3) {
+        return false;
+    }
+    if (_gridMaker_isMotionComponentExplicit(component)) {
+        return false;
+    }
+
+    var pos = _gridMaker_findProperty(component, [
+        "position",
+        "adbe transform position",
+        "adbe position",
+        "adbe geometry2-0001"
+    ], "point2d");
+    var scaleW = _gridMaker_findProperty(component, [
+        "scale width",
+        "largeur echelle",
+        "anchura de escala",
+        "larghezza scala",
+        "breitenskalierung",
+        "adbe geometry2-0004"
+    ], "number");
+    var scaleH = _gridMaker_findProperty(component, [
+        "scale height",
+        "hauteur echelle",
+        "altura de escala",
+        "altezza scala",
+        "hoehenskalierung",
+        "höhenskalierung",
+        "adbe geometry2-0005"
+    ], "number");
+
+    return !!pos && !!scaleW && !!scaleH;
 }
 
 function _gridMaker_componentHasCropProps(component) {
