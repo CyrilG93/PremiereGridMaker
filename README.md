@@ -1,4 +1,4 @@
-# Grid Maker (CEP) - v1.1.0
+# Grid Maker (CEP) - v1.1.1
 
 Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 
@@ -120,6 +120,13 @@ window.PGM_I18N.registerLocale({
 Then include it in `index.html` before `js/main.js`.
 
 ## Changelog
+
+### v1.1.1
+
+- Fixed intermittent `crop_effect_unavailable` failures caused by delayed QE effect visibility after `addVideoEffect`.
+- Improved effect detection stabilization with short retries before concluding that Crop is unavailable.
+- Enforced crop handling to use Crop effect components only (never Motion-integrated crop behavior).
+- Avoided hard failure when computed crop is zero and Crop effect is unavailable (placement can still succeed).
 
 ### v1.1.0
 

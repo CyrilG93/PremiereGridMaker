@@ -90,7 +90,7 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
             dbg("QE sequence unavailable (non-blocking unless effect ensure is required)");
         }
 
-        if (!transformComp || !cropComp || !placementComp) {
+        if (!cropComp || !placementComp) {
             if (!qSeq) {
                 dbg("QE sequence unavailable");
                 return _gridMaker_result("ERR", "qe_unavailable", null, debugLines);
@@ -100,23 +100,16 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
                 return _gridMaker_result("ERR", "qe_clip_not_found", null, debugLines);
             }
 
-            transformComp = _gridMaker_ensureManagedEffect(
-                clip,
-                qClip,
-                "transform",
-                _gridMaker_transformEffectLookupNames(),
-                debugLines
-            );
-            dbg("Transform component after ensure=" + _gridMaker_componentLabel(transformComp));
-
-            cropComp = _gridMaker_ensureManagedEffect(
-                clip,
-                qClip,
-                "crop",
-                _gridMaker_cropEffectLookupNames(),
-                debugLines
-            );
-            dbg("Crop component after ensure=" + _gridMaker_componentLabel(cropComp));
+            if (!cropComp) {
+                cropComp = _gridMaker_ensureManagedEffect(
+                    clip,
+                    qClip,
+                    "crop",
+                    _gridMaker_cropEffectLookupNames(),
+                    debugLines
+                );
+                dbg("Crop component after ensure=" + _gridMaker_componentLabel(cropComp));
+            }
 
             motionComp = _gridMaker_findMotionComponent(clip);
             placementComp = motionComp;
@@ -126,10 +119,6 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
         if (!placementComp) {
             dbg("Motion component unavailable");
             return _gridMaker_result("ERR", "motion_effect_unavailable", null, debugLines);
-        }
-        if (!cropComp) {
-            dbg("Crop component unavailable");
-            return _gridMaker_result("ERR", "crop_effect_unavailable", null, debugLines);
         }
         if (!transformComp) {
             dbg("Transform effect unavailable; continuing with Motion+Crop only");
@@ -265,7 +254,15 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
                 y: y.toFixed(3)
             }, debugLines);
         }
-        _gridMaker_setCrop(cropComp, cropL, cropR, cropT, cropB);
+        var cropRequired = (cropL > 0.0001 || cropR > 0.0001 || cropT > 0.0001 || cropB > 0.0001);
+        if (cropComp) {
+            _gridMaker_setCrop(cropComp, cropL, cropR, cropT, cropB);
+        } else if (cropRequired) {
+            dbg("Crop component unavailable and crop required");
+            return _gridMaker_result("ERR", "crop_effect_unavailable", null, debugLines);
+        } else {
+            dbg("Crop component unavailable but crop not required; skipping crop write");
+        }
         dbg("Placement write succeeded");
         dbg("Readback scale=" + _gridMaker_getCurrentScalePercent(placementComp));
         dbg("Readback position=" + _gridMaker_pointToString(_gridMaker_getCurrentPosition(placementComp)));
@@ -378,7 +375,7 @@ function gridMaker_applyToSelectedCustomCell(leftNorm, topNorm, widthNorm, heigh
             dbg("QE sequence unavailable (non-blocking unless effect ensure is required)");
         }
 
-        if (!transformComp || !cropComp || !placementComp) {
+        if (!cropComp || !placementComp) {
             if (!qSeq) {
                 dbg("QE sequence unavailable");
                 return _gridMaker_result("ERR", "qe_unavailable", null, debugLines);
@@ -388,23 +385,16 @@ function gridMaker_applyToSelectedCustomCell(leftNorm, topNorm, widthNorm, heigh
                 return _gridMaker_result("ERR", "qe_clip_not_found", null, debugLines);
             }
 
-            transformComp = _gridMaker_ensureManagedEffect(
-                clip,
-                qClip,
-                "transform",
-                _gridMaker_transformEffectLookupNames(),
-                debugLines
-            );
-            dbg("Transform component after ensure=" + _gridMaker_componentLabel(transformComp));
-
-            cropComp = _gridMaker_ensureManagedEffect(
-                clip,
-                qClip,
-                "crop",
-                _gridMaker_cropEffectLookupNames(),
-                debugLines
-            );
-            dbg("Crop component after ensure=" + _gridMaker_componentLabel(cropComp));
+            if (!cropComp) {
+                cropComp = _gridMaker_ensureManagedEffect(
+                    clip,
+                    qClip,
+                    "crop",
+                    _gridMaker_cropEffectLookupNames(),
+                    debugLines
+                );
+                dbg("Crop component after ensure=" + _gridMaker_componentLabel(cropComp));
+            }
 
             motionComp = _gridMaker_findMotionComponent(clip);
             placementComp = motionComp;
@@ -414,10 +404,6 @@ function gridMaker_applyToSelectedCustomCell(leftNorm, topNorm, widthNorm, heigh
         if (!placementComp) {
             dbg("Motion component unavailable");
             return _gridMaker_result("ERR", "motion_effect_unavailable", null, debugLines);
-        }
-        if (!cropComp) {
-            dbg("Crop component unavailable");
-            return _gridMaker_result("ERR", "crop_effect_unavailable", null, debugLines);
         }
         if (!transformComp) {
             dbg("Transform effect unavailable; continuing with Motion+Crop only");
@@ -551,7 +537,15 @@ function gridMaker_applyToSelectedCustomCell(leftNorm, topNorm, widthNorm, heigh
                 y: y.toFixed(3)
             }, debugLines);
         }
-        _gridMaker_setCrop(cropComp, cropL, cropR, cropT, cropB);
+        var cropRequired = (cropL > 0.0001 || cropR > 0.0001 || cropT > 0.0001 || cropB > 0.0001);
+        if (cropComp) {
+            _gridMaker_setCrop(cropComp, cropL, cropR, cropT, cropB);
+        } else if (cropRequired) {
+            dbg("Crop component unavailable and crop required");
+            return _gridMaker_result("ERR", "crop_effect_unavailable", null, debugLines);
+        } else {
+            dbg("Crop component unavailable but crop not required; skipping crop write");
+        }
         dbg("Placement write succeeded");
         dbg("Readback scale=" + _gridMaker_getCurrentScalePercent(placementComp));
         dbg("Readback position=" + _gridMaker_pointToString(_gridMaker_getCurrentPosition(placementComp)));
@@ -762,6 +756,39 @@ function _gridMaker_findManagedCropComponent(clip) {
     return _gridMaker_findManagedEffectComponent(clip, "crop");
 }
 
+function _gridMaker_sleepSafe(ms) {
+    try {
+        if (typeof $ !== "undefined" && $.sleep) {
+            $.sleep(ms);
+        }
+    } catch (e1) {}
+}
+
+function _gridMaker_waitForManagedEffect(clip, type, attempts, sleepMs, debugLines) {
+    var tries = parseInt(attempts, 10);
+    if (!(tries > 0)) {
+        tries = 1;
+    }
+    var delay = parseInt(sleepMs, 10);
+    if (!(delay >= 0)) {
+        delay = 0;
+    }
+
+    for (var i = 0; i < tries; i++) {
+        var found = _gridMaker_findManagedEffectComponent(clip, type);
+        if (found) {
+            if (i > 0) {
+                _gridMaker_debugPush(debugLines, type + " appeared after settle retry #" + (i + 1) + ": " + _gridMaker_componentLabel(found));
+            }
+            return found;
+        }
+        if (i + 1 < tries && delay > 0) {
+            _gridMaker_sleepSafe(delay);
+        }
+    }
+    return null;
+}
+
 function _gridMaker_ensureManagedEffect(clip, qClip, type, lookupNames, debugLines) {
     var existing = _gridMaker_findManagedEffectComponent(clip, type);
     if (existing) {
@@ -790,18 +817,21 @@ function _gridMaker_ensureManagedEffect(clip, qClip, type, lookupNames, debugLin
 
         var afterType = _gridMaker_getTypeComponents(clip, type);
         var candidate = _gridMaker_pickNewComponent(beforeType, afterType);
+        if (!candidate && afterType.length > beforeType.length) {
+            candidate = afterType[afterType.length - 1];
+        }
+        if (!candidate) {
+            candidate = _gridMaker_waitForManagedEffect(clip, type, 4, 20, debugLines);
+        }
         _gridMaker_debugPush(debugLines, "Added " + type + " via '" + effectName + "' candidate=" + _gridMaker_componentLabel(candidate));
 
         if (candidate) {
             return candidate;
         }
-        if (afterType.length > beforeType.length) {
-            return afterType[afterType.length - 1];
-        }
         beforeType = afterType;
     }
 
-    var fallback = _gridMaker_findManagedEffectComponent(clip, type);
+    var fallback = _gridMaker_waitForManagedEffect(clip, type, 5, 20, debugLines);
     if (fallback) {
         _gridMaker_debugPush(debugLines, type + " managed fallback found: " + _gridMaker_componentLabel(fallback));
     }
@@ -896,15 +926,95 @@ function _gridMaker_componentMatchesType(component, type) {
     }
 
     if (type === "crop") {
-        return _gridMaker_componentMatchScore(
+        if (_gridMaker_isMotionComponentExplicit(component)) {
+            return false;
+        }
+
+        var cropScore = _gridMaker_componentMatchScore(
             displayName,
             matchName,
             ["crop", "recadr", "recortar", "ritagli", "freistell"],
             ["adbe crop", "adbe aecrop", "ae.adbe crop", "ae.adbe aecrop"]
-        ) >= 0;
+        );
+        if (cropScore >= 0) {
+            return true;
+        }
+
+        // Universal fallback: some Premiere locales/builds expose localized names
+        // that are not covered by static effect-name lookups. Crop always has
+        // the four directional numeric properties.
+        if (_gridMaker_componentHasCropProps(component)) {
+            return true;
+        }
+        return false;
     }
 
     return false;
+}
+
+function _gridMaker_componentHasCropProps(component) {
+    if (!component || !component.properties || component.properties.numItems < 4) {
+        return false;
+    }
+    if (_gridMaker_isMotionComponentExplicit(component)) {
+        return false;
+    }
+
+    var pLeft = _gridMaker_findProperty(component, [
+        "left",
+        "gauche",
+        "izquierda",
+        "sinistra",
+        "links",
+        "esquerda",
+        "adbe crop left"
+    ], "number");
+    var pRight = _gridMaker_findProperty(component, [
+        "right",
+        "droite",
+        "derecha",
+        "destra",
+        "rechts",
+        "direita",
+        "adbe crop right"
+    ], "number");
+    var pTop = _gridMaker_findProperty(component, [
+        "top",
+        "haut",
+        "superior",
+        "alto",
+        "oben",
+        "topo",
+        "adbe crop top"
+    ], "number");
+    var pBottom = _gridMaker_findProperty(component, [
+        "bottom",
+        "bas",
+        "inferior",
+        "basso",
+        "unten",
+        "baixo",
+        "adbe crop bottom"
+    ], "number");
+
+    return !!pLeft && !!pRight && !!pTop && !!pBottom;
+}
+
+function _gridMaker_isMotionComponentExplicit(component) {
+    if (!component) {
+        return false;
+    }
+
+    var displayName = "";
+    var matchName = "";
+    try {
+        displayName = component.displayName ? component.displayName.toLowerCase() : "";
+    } catch (e1) {}
+    try {
+        matchName = component.matchName ? component.matchName.toLowerCase() : "";
+    } catch (e2) {}
+
+    return _gridMaker_containsAny(matchName, ["adbe motion"]) || _gridMaker_containsAny(displayName, ["motion", "mouvement", "movimiento", "movimento", "beweg"]);
 }
 
 function _gridMaker_getTypeComponents(clip, type) {
@@ -1369,6 +1479,7 @@ function _gridMaker_transformEffectLookupNames() {
 function _gridMaker_cropEffectLookupNames() {
     return [
         "Crop",
+        "Recorte",
         "Recadrage",
         "Recortar",
         "Ritaglia",
@@ -1400,7 +1511,7 @@ function _gridMaker_findMotionComponent(clip) {
 function _gridMaker_findCropComponent(clip) {
     return _gridMaker_findComponentByHints(
         clip,
-        ["crop", "recadr", "recortar", "ritagli", "freistell"],
+        ["crop", "recadr", "recortar", "recorte", "ritagli", "freistell"],
         ["adbe crop", "ae.adbe crop"],
         false
     );
@@ -2130,10 +2241,46 @@ function _gridMaker_isReasonableFrameSize(width, height) {
 }
 
 function _gridMaker_setCrop(component, left, right, top, bottom) {
-    var pLeft = _gridMaker_findProperty(component, ["left", "gauche", "adbe crop left"]);
-    var pRight = _gridMaker_findProperty(component, ["right", "droite", "adbe crop right"]);
-    var pTop = _gridMaker_findProperty(component, ["top", "haut", "adbe crop top"]);
-    var pBottom = _gridMaker_findProperty(component, ["bottom", "bas", "adbe crop bottom"]);
+    if (!component || !_gridMaker_componentMatchesType(component, "crop")) {
+        return;
+    }
+
+    var pLeft = _gridMaker_findProperty(component, [
+        "left",
+        "gauche",
+        "izquierda",
+        "sinistra",
+        "links",
+        "esquerda",
+        "adbe crop left"
+    ]);
+    var pRight = _gridMaker_findProperty(component, [
+        "right",
+        "droite",
+        "derecha",
+        "destra",
+        "rechts",
+        "direita",
+        "adbe crop right"
+    ]);
+    var pTop = _gridMaker_findProperty(component, [
+        "top",
+        "haut",
+        "superior",
+        "alto",
+        "oben",
+        "topo",
+        "adbe crop top"
+    ]);
+    var pBottom = _gridMaker_findProperty(component, [
+        "bottom",
+        "bas",
+        "inferior",
+        "basso",
+        "unten",
+        "baixo",
+        "adbe crop bottom"
+    ]);
 
     if (pLeft) {
         _gridMaker_disableTimeVarying(pLeft);
