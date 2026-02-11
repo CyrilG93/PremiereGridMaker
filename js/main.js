@@ -5,7 +5,7 @@
   var cepBridge = window.cep || null;
   var csInterface = (typeof CSInterface !== "undefined") ? new CSInterface() : null;
   var i18n = window.PGM_I18N || { defaultLocale: "en", locales: {} };
-  var APP_VERSION = "1.1.2";
+  var APP_VERSION = "1.1.3";
   var RELEASE_API_URL = "https://api.github.com/repos/CyrilG93/PremiereGridMaker/releases/latest";
   var DESIGNER_GRID_SIZE = 10;
 
@@ -42,6 +42,12 @@
     latest: "",
     downloadUrl: ""
   };
+  var applyRequestState = {
+    inFlight: false,
+    queued: null
+  };
+  var APPLY_RETRY_DELAY_MS = 450;
+  var APPLY_MAX_RETRIES = 2;
 
   var rowsRange = document.getElementById("rows");
   var rowsNumber = document.getElementById("rowsNumber");
@@ -800,6 +806,64 @@
     return { kind: "", raw: result, hostDebug: "", code: "" };
   }
 
+  function isRetryableApplyError(code) {
+    return code === "transform_effect_unavailable" || code === "crop_effect_unavailable";
+  }
+
+  function runApplyRequest(request, attempt) {
+    if (!request || !request.script) {
+      return;
+    }
+    applyRequestState.inFlight = true;
+
+    callHost(request.script, function (result) {
+      appendDebug("HOST< raw: " + (result || "<empty>"));
+      var parsed = parseHostResponse(result);
+      appendHostDebug(parsed.hostDebug);
+
+      if (parsed.kind === "ok" && typeof request.onSuccess === "function") {
+        request.onSuccess(parsed);
+      }
+
+      if (parsed.kind === "err" && isRetryableApplyError(parsed.code) && attempt < APPLY_MAX_RETRIES) {
+        appendDebug(
+          "UI> host reported " + parsed.code +
+          ", auto-retry " + (attempt + 2) + "/" + (APPLY_MAX_RETRIES + 1) +
+          " in " + APPLY_RETRY_DELAY_MS + "ms"
+        );
+        window.setTimeout(function () {
+          runApplyRequest(request, attempt + 1);
+        }, APPLY_RETRY_DELAY_MS);
+        return;
+      }
+
+      if (typeof request.onDone === "function") {
+        request.onDone(parsed);
+      }
+
+      applyRequestState.inFlight = false;
+      if (applyRequestState.queued) {
+        var queued = applyRequestState.queued;
+        applyRequestState.queued = null;
+        appendDebug("UI> apply busy queue: running latest pending request");
+        runApplyRequest(queued, 0);
+      }
+    });
+  }
+
+  function enqueueApplyRequest(request) {
+    if (!request || !request.script) {
+      return;
+    }
+
+    if (applyRequestState.inFlight) {
+      applyRequestState.queued = request;
+      appendDebug("UI> apply busy queue: updated pending request");
+      return;
+    }
+    runApplyRequest(request, 0);
+  }
+
   function parseJsonSafe(raw) {
     if (!raw) {
       return null;
@@ -828,25 +892,24 @@
     appendDebug("UI> evalScript: " + script);
     setStatusKey("status.applying", {}, "");
 
-    callHost(script, function (result) {
-      appendDebug("HOST< raw: " + (result || "<empty>"));
-      var parsed = parseHostResponse(result);
-      appendHostDebug(parsed.hostDebug);
-
-      if (parsed.kind === "ok" && parsed.code === "cell_applied" && parsed.details) {
-        appendDebug(
-          "UI> applied cell row=" + parsed.details.row +
-          " col=" + parsed.details.col +
-          " scale=" + parsed.details.scale + "%"
-        );
+    enqueueApplyRequest({
+      script: script,
+      onSuccess: function (parsed) {
+        if (parsed.code === "cell_applied" && parsed.details) {
+          appendDebug(
+            "UI> applied cell row=" + parsed.details.row +
+            " col=" + parsed.details.col +
+            " scale=" + parsed.details.scale + "%"
+          );
+        }
+      },
+      onDone: function (parsed) {
+        if (parsed.raw) {
+          setStatusRaw(parsed.raw, parsed.kind);
+          return;
+        }
+        setStatusKey(parsed.key, parsed.vars, parsed.kind);
       }
-
-      if (parsed.raw) {
-        setStatusRaw(parsed.raw, parsed.kind);
-        return;
-      }
-
-      setStatusKey(parsed.key, parsed.vars, parsed.kind);
     });
   }
 
@@ -878,21 +941,20 @@
     appendDebug("UI> evalScript: " + script);
     setStatusKey("status.applying", {}, "");
 
-    callHost(script, function (result) {
-      appendDebug("HOST< raw: " + (result || "<empty>"));
-      var parsed = parseHostResponse(result);
-      appendHostDebug(parsed.hostDebug);
-
-      if (parsed.kind === "ok" && parsed.code === "cell_applied") {
-        appendDebug("UI> applied designer cell id=" + block.id + " scale=" + ((parsed.details && parsed.details.scale) || "") + "%");
+    enqueueApplyRequest({
+      script: script,
+      onSuccess: function (parsed) {
+        if (parsed.code === "cell_applied") {
+          appendDebug("UI> applied designer cell id=" + block.id + " scale=" + ((parsed.details && parsed.details.scale) || "") + "%");
+        }
+      },
+      onDone: function (parsed) {
+        if (parsed.raw) {
+          setStatusRaw(parsed.raw, parsed.kind);
+          return;
+        }
+        setStatusKey(parsed.key, parsed.vars, parsed.kind);
       }
-
-      if (parsed.raw) {
-        setStatusRaw(parsed.raw, parsed.kind);
-        return;
-      }
-
-      setStatusKey(parsed.key, parsed.vars, parsed.kind);
     });
   }
 

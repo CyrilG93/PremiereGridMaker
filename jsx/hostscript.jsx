@@ -828,14 +828,35 @@ function _gridMaker_waitForManagedEffect(clip, type, attempts, sleepMs, debugLin
 }
 
 function _gridMaker_ensureManagedEffect(clip, qClip, type, lookupNames, debugLines) {
+    var byTypeNow = _gridMaker_getTypeComponents(clip, type);
+    if (byTypeNow.length > 1) {
+        _gridMaker_debugPush(debugLines, type + " duplicates detected before ensure=" + byTypeNow.length + " (will reuse existing, no new insert)");
+    }
+
     var existing = _gridMaker_findManagedEffectComponent(clip, type);
     if (existing) {
         _gridMaker_debugPush(debugLines, type + " managed component found: " + _gridMaker_componentLabel(existing));
         return existing;
     }
 
-    var beforeType = _gridMaker_getTypeComponents(clip, type);
+    var beforeType = byTypeNow;
     _gridMaker_debugPush(debugLines, type + " components before ensure=" + beforeType.length);
+
+    var qeTypeCountBefore = _gridMaker_qeCountTypeComponents(qClip, type);
+    _gridMaker_debugPush(debugLines, type + " QE components before ensure=" + qeTypeCountBefore);
+    if (qeTypeCountBefore > 0 && beforeType.length === 0) {
+        _gridMaker_debugPush(
+            debugLines,
+            type + " already present in QE but not yet in clip.components; waiting sync (skip new insertion to avoid duplicates)"
+        );
+        var qeSyncWait = _gridMaker_waitForManagedEffect(clip, type, 30, 60, debugLines);
+        if (qeSyncWait) {
+            _gridMaker_debugPush(debugLines, type + " appeared after QE sync wait: " + _gridMaker_componentLabel(qeSyncWait));
+            return qeSyncWait;
+        }
+        _gridMaker_debugPush(debugLines, type + " still not visible after QE sync wait; aborting insertion to avoid duplicates");
+        return null;
+    }
 
     for (var i = 0; i < lookupNames.length; i++) {
         var effectName = lookupNames[i];
@@ -859,9 +880,14 @@ function _gridMaker_ensureManagedEffect(clip, qClip, type, lookupNames, debugLin
             candidate = afterType[afterType.length - 1];
         }
         if (!candidate) {
-            candidate = _gridMaker_waitForManagedEffect(clip, type, 4, 20, debugLines);
+            candidate = _gridMaker_waitForManagedEffect(clip, type, 10, 40, debugLines);
         }
-        _gridMaker_debugPush(debugLines, "Added " + type + " via '" + effectName + "' candidate=" + _gridMaker_componentLabel(candidate));
+        var qeTypeCountAfter = _gridMaker_qeCountTypeComponents(qClip, type);
+        _gridMaker_debugPush(
+            debugLines,
+            "Added " + type + " via '" + effectName + "' candidate=" + _gridMaker_componentLabel(candidate) +
+            " qeCountBefore=" + qeTypeCountBefore + " qeCountAfter=" + qeTypeCountAfter
+        );
 
         if (candidate) {
             return candidate;
@@ -873,9 +899,11 @@ function _gridMaker_ensureManagedEffect(clip, qClip, type, lookupNames, debugLin
         break;
     }
 
-    var fallback = _gridMaker_waitForManagedEffect(clip, type, 5, 20, debugLines);
+    var fallback = _gridMaker_waitForManagedEffect(clip, type, 24, 60, debugLines);
     if (fallback) {
         _gridMaker_debugPush(debugLines, type + " managed fallback found: " + _gridMaker_componentLabel(fallback));
+    } else {
+        _gridMaker_debugPush(debugLines, type + " still missing after extended settle window");
     }
     return fallback;
 }
@@ -1250,6 +1278,24 @@ function _gridMaker_qeComponentMatchesType(component, type) {
         return _gridMaker_containsAny(matchName, ["adbe crop", "adbe aecrop"]) || _gridMaker_containsAny(name, ["crop", "recadr", "recortar", "ritagli"]);
     }
     return false;
+}
+
+function _gridMaker_qeCountTypeComponents(qClip, type) {
+    var count = _gridMaker_qeGetComponentCount(qClip);
+    if (count < 1) {
+        return 0;
+    }
+    var out = 0;
+    for (var i = 0; i < count; i++) {
+        var qeComp = _gridMaker_qeGetComponentAt(qClip, i);
+        if (!qeComp) {
+            continue;
+        }
+        if (_gridMaker_qeComponentMatchesType(qeComp, type)) {
+            out += 1;
+        }
+    }
+    return out;
 }
 
 function _gridMaker_tryTagSingleTypeViaQE(qClip, type, targetName, debugLines) {
