@@ -139,11 +139,16 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
             dbg("Motion component unavailable");
             return _gridMaker_result("ERR", "motion_effect_unavailable", null, debugLines);
         }
-        if (!transformComp) {
+        var transformVisibleInQE = qClip ? (_gridMaker_qeCountTypeComponents(qClip, "transform") > 0) : false;
+        if (!transformComp && !transformVisibleInQE) {
             dbg("Transform effect unavailable (required)");
             return _gridMaker_result("ERR", "transform_effect_unavailable", null, debugLines);
         }
-        dbg("Transform strategy: required and kept as neutral effect (no parameter writes)");
+        if (transformComp) {
+            dbg("Transform strategy: required and kept as neutral effect (no parameter writes)");
+        } else {
+            dbg("Transform strategy: required and present in QE (not yet visible in clip.components), continuing");
+        }
         dbg("Placement strategy: Motion only");
 
         var frameSize = _gridMaker_getSequenceFrameSize(seq, qSeq);
@@ -443,11 +448,16 @@ function gridMaker_applyToSelectedCustomCell(leftNorm, topNorm, widthNorm, heigh
             dbg("Motion component unavailable");
             return _gridMaker_result("ERR", "motion_effect_unavailable", null, debugLines);
         }
-        if (!transformComp) {
+        var transformVisibleInQE = qClip ? (_gridMaker_qeCountTypeComponents(qClip, "transform") > 0) : false;
+        if (!transformComp && !transformVisibleInQE) {
             dbg("Transform effect unavailable (required)");
             return _gridMaker_result("ERR", "transform_effect_unavailable", null, debugLines);
         }
-        dbg("Transform strategy: required and kept as neutral effect (no parameter writes)");
+        if (transformComp) {
+            dbg("Transform strategy: required and kept as neutral effect (no parameter writes)");
+        } else {
+            dbg("Transform strategy: required and present in QE (not yet visible in clip.components), continuing");
+        }
         dbg("Placement strategy: Motion only");
 
         var frameSize = _gridMaker_getSequenceFrameSize(seq, qSeq);
@@ -605,6 +615,22 @@ function _gridMaker_findQEClip(qSeq, seq, clip) {
     var targetTrack = _gridMaker_findTrackIndex(seq, clip);
     var targetName = _gridMaker_clipName(clip);
 
+    // Priority 1: if we can resolve a target track, pick the best candidate on that track first.
+    if (targetTrack >= 0 && targetTrack < qSeq.numVideoTracks) {
+        var sameTrackItem = _gridMaker_findBestQEClipInTrack(
+            qSeq,
+            targetTrack,
+            targetStart,
+            targetEnd,
+            targetDuration,
+            targetTrack,
+            targetName
+        );
+        if (sameTrackItem) {
+            return sameTrackItem;
+        }
+    }
+
     var bestItem = null;
     var bestScore = Number.MAX_VALUE;
 
@@ -635,6 +661,31 @@ function _gridMaker_findQEClip(qSeq, seq, clip) {
     return bestItem;
 }
 
+function _gridMaker_findBestQEClipInTrack(qSeq, trackIndex, targetStart, targetEnd, targetDuration, targetTrack, targetName) {
+    if (!qSeq || trackIndex < 0 || trackIndex >= qSeq.numVideoTracks) {
+        return null;
+    }
+    var track = qSeq.getVideoTrackAt(trackIndex);
+    if (!track) {
+        return null;
+    }
+
+    var bestItem = null;
+    var bestScore = Number.MAX_VALUE;
+    for (var ci = 0; ci < track.numItems; ci++) {
+        var item = track.getItemAt(ci);
+        if (!item) {
+            continue;
+        }
+        var score = _gridMaker_matchScore(item, trackIndex, targetStart, targetEnd, targetDuration, targetTrack, targetName);
+        if (score < bestScore) {
+            bestScore = score;
+            bestItem = item;
+        }
+    }
+    return bestItem;
+}
+
 function _gridMaker_matchScore(item, itemTrackIndex, targetStart, targetEnd, targetDuration, targetTrack, targetName) {
     var itemStart = _gridMaker_timeToSeconds(item.start);
     var itemEnd = _gridMaker_timeToSeconds(item.end);
@@ -650,11 +701,12 @@ function _gridMaker_matchScore(item, itemTrackIndex, targetStart, targetEnd, tar
     score += Math.abs(itemDuration - targetDuration) * 0.25;
 
     if (targetTrack >= 0) {
-        score += Math.abs(itemTrackIndex - targetTrack) * 0.05;
+        // Strongly prefer the expected track; timing/name collisions across tracks are common.
+        score += Math.abs(itemTrackIndex - targetTrack) * 25.0;
     }
 
     if (_gridMaker_isQEItemSelected(item)) {
-        score -= 0.2;
+        score -= 3.0;
     }
 
     var itemName = _gridMaker_clipName(item);
@@ -667,18 +719,66 @@ function _gridMaker_matchScore(item, itemTrackIndex, targetStart, targetEnd, tar
 
 function _gridMaker_findTrackIndex(seq, clip) {
     try {
-        if (!seq || !clip || !clip.parentTrack || !seq.videoTracks) {
+        if (!seq || !clip || !seq.videoTracks) {
             return -1;
         }
 
+        var targetNodeId = _gridMaker_clipNodeId(clip);
+        var clipParentTrack = null;
+        try {
+            clipParentTrack = clip.parentTrack || null;
+        } catch (e1) {
+            clipParentTrack = null;
+        }
+
         for (var i = 0; i < seq.videoTracks.numTracks; i++) {
-            if (seq.videoTracks[i] === clip.parentTrack) {
+            var track = seq.videoTracks[i];
+            if (!track) {
+                continue;
+            }
+            if (clipParentTrack && track === clipParentTrack) {
                 return i;
             }
+
+            // Fallback: compare clips in track by object identity and nodeId.
+            try {
+                if (track.clips && track.clips.numItems > 0) {
+                    for (var j = 0; j < track.clips.numItems; j++) {
+                        var trackClip = track.clips[j];
+                        if (!trackClip) {
+                            continue;
+                        }
+                        if (trackClip === clip) {
+                            return i;
+                        }
+                        var trackClipNodeId = _gridMaker_clipNodeId(trackClip);
+                        if (targetNodeId && trackClipNodeId && targetNodeId === trackClipNodeId) {
+                            return i;
+                        }
+                    }
+                }
+            } catch (e2) {}
         }
     } catch (e) {}
 
     return -1;
+}
+
+function _gridMaker_clipNodeId(clipLike) {
+    if (!clipLike) {
+        return "";
+    }
+    try {
+        if (clipLike.nodeId !== undefined && clipLike.nodeId !== null) {
+            return String(clipLike.nodeId);
+        }
+    } catch (e1) {}
+    try {
+        if (clipLike.projectItem && clipLike.projectItem.nodeId !== undefined && clipLike.projectItem.nodeId !== null) {
+            return String(clipLike.projectItem.nodeId);
+        }
+    } catch (e2) {}
+    return "";
 }
 
 function _gridMaker_clipName(clipLike) {
@@ -847,14 +947,8 @@ function _gridMaker_ensureManagedEffect(clip, qClip, type, lookupNames, debugLin
     if (qeTypeCountBefore > 0 && beforeType.length === 0) {
         _gridMaker_debugPush(
             debugLines,
-            type + " already present in QE but not yet in clip.components; waiting sync (skip new insertion to avoid duplicates)"
+            type + " already present in QE but not yet in clip.components; skip insertion to avoid duplicates"
         );
-        var qeSyncWait = _gridMaker_waitForManagedEffect(clip, type, 30, 60, debugLines);
-        if (qeSyncWait) {
-            _gridMaker_debugPush(debugLines, type + " appeared after QE sync wait: " + _gridMaker_componentLabel(qeSyncWait));
-            return qeSyncWait;
-        }
-        _gridMaker_debugPush(debugLines, type + " still not visible after QE sync wait; aborting insertion to avoid duplicates");
         return null;
     }
 
@@ -879,9 +973,6 @@ function _gridMaker_ensureManagedEffect(clip, qClip, type, lookupNames, debugLin
         if (!candidate && afterType.length > beforeType.length) {
             candidate = afterType[afterType.length - 1];
         }
-        if (!candidate) {
-            candidate = _gridMaker_waitForManagedEffect(clip, type, 10, 40, debugLines);
-        }
         var qeTypeCountAfter = _gridMaker_qeCountTypeComponents(qClip, type);
         _gridMaker_debugPush(
             debugLines,
@@ -894,16 +985,16 @@ function _gridMaker_ensureManagedEffect(clip, qClip, type, lookupNames, debugLin
         }
 
         // Effect insertion can be async/laggy in some Premiere builds.
-        // Stop stacking duplicate adds and wait for component refresh below.
-        _gridMaker_debugPush(debugLines, type + " add acknowledged without immediate candidate; waiting before additional insertions");
+        // Stop stacking duplicate adds across localized lookup names.
+        _gridMaker_debugPush(debugLines, type + " add acknowledged without immediate candidate; stopping additional insertions");
         break;
     }
 
-    var fallback = _gridMaker_waitForManagedEffect(clip, type, 24, 60, debugLines);
+    var fallback = _gridMaker_findManagedEffectComponent(clip, type);
     if (fallback) {
         _gridMaker_debugPush(debugLines, type + " managed fallback found: " + _gridMaker_componentLabel(fallback));
     } else {
-        _gridMaker_debugPush(debugLines, type + " still missing after extended settle window");
+        _gridMaker_debugPush(debugLines, type + " still missing in clip.components after ensure pass");
     }
     return fallback;
 }

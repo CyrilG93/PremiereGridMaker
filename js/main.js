@@ -5,7 +5,7 @@
   var cepBridge = window.cep || null;
   var csInterface = (typeof CSInterface !== "undefined") ? new CSInterface() : null;
   var i18n = window.PGM_I18N || { defaultLocale: "en", locales: {} };
-  var APP_VERSION = "1.1.3";
+  var APP_VERSION = "1.1.4";
   var RELEASE_API_URL = "https://api.github.com/repos/CyrilG93/PremiereGridMaker/releases/latest";
   var DESIGNER_GRID_SIZE = 10;
 
@@ -47,7 +47,7 @@
     queued: null
   };
   var APPLY_RETRY_DELAY_MS = 450;
-  var APPLY_MAX_RETRIES = 2;
+  var APPLY_MAX_RETRIES = 0;
 
   var rowsRange = document.getElementById("rows");
   var rowsNumber = document.getElementById("rowsNumber");
