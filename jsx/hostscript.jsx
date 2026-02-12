@@ -139,16 +139,12 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
             dbg("Motion component unavailable");
             return _gridMaker_result("ERR", "motion_effect_unavailable", null, debugLines);
         }
-        var transformVisibleInQE = qClip ? (_gridMaker_qeCountTypeComponents(qClip, "transform") > 0) : false;
-        if (!transformComp && !transformVisibleInQE) {
+        if (!transformComp) {
             dbg("Transform effect unavailable (required)");
             return _gridMaker_result("ERR", "transform_effect_unavailable", null, debugLines);
         }
-        if (transformComp) {
-            dbg("Transform strategy: required and kept as neutral effect (no parameter writes)");
-        } else {
-            dbg("Transform strategy: required and present in QE (not yet visible in clip.components), continuing");
-        }
+        _gridMaker_enableTransformUniformScale(transformComp, debugLines);
+        dbg("Transform strategy: required and kept as neutral effect (no parameter writes)");
         dbg("Placement strategy: Motion only");
 
         var frameSize = _gridMaker_getSequenceFrameSize(seq, qSeq);
@@ -448,16 +444,12 @@ function gridMaker_applyToSelectedCustomCell(leftNorm, topNorm, widthNorm, heigh
             dbg("Motion component unavailable");
             return _gridMaker_result("ERR", "motion_effect_unavailable", null, debugLines);
         }
-        var transformVisibleInQE = qClip ? (_gridMaker_qeCountTypeComponents(qClip, "transform") > 0) : false;
-        if (!transformComp && !transformVisibleInQE) {
+        if (!transformComp) {
             dbg("Transform effect unavailable (required)");
             return _gridMaker_result("ERR", "transform_effect_unavailable", null, debugLines);
         }
-        if (transformComp) {
-            dbg("Transform strategy: required and kept as neutral effect (no parameter writes)");
-        } else {
-            dbg("Transform strategy: required and present in QE (not yet visible in clip.components), continuing");
-        }
+        _gridMaker_enableTransformUniformScale(transformComp, debugLines);
+        dbg("Transform strategy: required and kept as neutral effect (no parameter writes)");
         dbg("Placement strategy: Motion only");
 
         var frameSize = _gridMaker_getSequenceFrameSize(seq, qSeq);
@@ -615,6 +607,20 @@ function _gridMaker_findQEClip(qSeq, seq, clip) {
     var targetTrack = _gridMaker_findTrackIndex(seq, clip);
     var targetName = _gridMaker_clipName(clip);
 
+    // Priority 0: use currently selected QE video clip when possible.
+    // This best matches manual drag-and-drop behavior on the selected timeline item.
+    var selectedItem = _gridMaker_findBestSelectedQEClip(
+        qSeq,
+        targetStart,
+        targetEnd,
+        targetDuration,
+        targetTrack,
+        targetName
+    );
+    if (selectedItem) {
+        return selectedItem;
+    }
+
     // Priority 1: if we can resolve a target track, pick the best candidate on that track first.
     if (targetTrack >= 0 && targetTrack < qSeq.numVideoTracks) {
         var sameTrackItem = _gridMaker_findBestQEClipInTrack(
@@ -656,6 +662,37 @@ function _gridMaker_findQEClip(qSeq, seq, clip) {
 
     if (!bestItem) {
         return null;
+    }
+
+    return bestItem;
+}
+
+function _gridMaker_findBestSelectedQEClip(qSeq, targetStart, targetEnd, targetDuration, targetTrack, targetName) {
+    if (!qSeq) {
+        return null;
+    }
+
+    var bestItem = null;
+    var bestScore = Number.MAX_VALUE;
+
+    for (var vt = 0; vt < qSeq.numVideoTracks; vt++) {
+        var track = qSeq.getVideoTrackAt(vt);
+        if (!track) {
+            continue;
+        }
+
+        for (var ci = 0; ci < track.numItems; ci++) {
+            var item = track.getItemAt(ci);
+            if (!item || !_gridMaker_isQEItemSelected(item)) {
+                continue;
+            }
+
+            var score = _gridMaker_matchScore(item, vt, targetStart, targetEnd, targetDuration, targetTrack, targetName);
+            if (score < bestScore) {
+                bestScore = score;
+                bestItem = item;
+            }
+        }
     }
 
     return bestItem;
@@ -944,13 +981,6 @@ function _gridMaker_ensureManagedEffect(clip, qClip, type, lookupNames, debugLin
 
     var qeTypeCountBefore = _gridMaker_qeCountTypeComponents(qClip, type);
     _gridMaker_debugPush(debugLines, type + " QE components before ensure=" + qeTypeCountBefore);
-    if (qeTypeCountBefore > 0 && beforeType.length === 0) {
-        _gridMaker_debugPush(
-            debugLines,
-            type + " already present in QE but not yet in clip.components; skip insertion to avoid duplicates"
-        );
-        return null;
-    }
 
     for (var i = 0; i < lookupNames.length; i++) {
         var effectName = lookupNames[i];
@@ -984,8 +1014,13 @@ function _gridMaker_ensureManagedEffect(clip, qClip, type, lookupNames, debugLin
             return candidate;
         }
 
-        // Effect insertion can be async/laggy in some Premiere builds.
-        // Stop stacking duplicate adds across localized lookup names.
+        var settled = _gridMaker_waitForManagedEffect(clip, type, 4, 60, debugLines);
+        if (settled) {
+            _gridMaker_debugPush(debugLines, type + " became visible after short settle window: " + _gridMaker_componentLabel(settled));
+            return settled;
+        }
+
+        // Prevent stacking duplicate adds across localized lookup names.
         _gridMaker_debugPush(debugLines, type + " add acknowledged without immediate candidate; stopping additional insertions");
         break;
     }
@@ -1597,50 +1632,30 @@ function _gridMaker_enableTransformUniformScale(transformComp, debugLines) {
         return;
     }
 
-    var widthProp = _gridMaker_findProperty(
-        transformComp,
-        [
-            "scale width",
-            "echelle largeur",
-            "échelle largeur",
-            "largeur",
-            "width",
-            "adbe geometry-0002",
-            "adbe geometry2-0002"
-        ],
-        "number"
-    );
-    var heightProp = _gridMaker_findProperty(
-        transformComp,
-        [
-            "scale height",
-            "echelle hauteur",
-            "échelle hauteur",
-            "hauteur",
-            "height",
-            "adbe geometry-0001",
-            "adbe geometry2-0001"
-        ],
-        "number"
-    );
-
     if (_gridMaker_isTruthyToggleValue(_gridMaker_readPropertyValue(uniform))) {
-        _gridMaker_debugPush(debugLines, "Transform uniform scale already checked; validating linkage");
-        if (_gridMaker_transformUniformLinkIsEffective(uniform, widthProp, heightProp, debugLines)) {
-            return;
-        }
-        _gridMaker_debugPush(debugLines, "Transform uniform linkage not effective despite checked state");
+        _gridMaker_debugPush(debugLines, "Transform uniform scale already enabled");
+        return;
     }
 
-    var ok = _gridMaker_trySetToggleProperty(uniform, 1, debugLines, "transform.uniformScale=1");
+    var ok = _gridMaker_trySetToggleProperty(uniform, true, debugLines, "transform.uniformScale=true");
     if (!ok) {
-        ok = _gridMaker_trySetToggleProperty(uniform, true, debugLines, "transform.uniformScale=true");
+        ok = _gridMaker_trySetToggleProperty(uniform, 1, debugLines, "transform.uniformScale=1");
     }
     if (ok) {
-        // Force a no-op sync pass so both scale axes stay aligned with default-like behavior.
-        _gridMaker_transformSyncScaleAxes(widthProp, heightProp, debugLines);
-        var linked = _gridMaker_transformUniformLinkIsEffective(uniform, widthProp, heightProp, debugLines);
-        _gridMaker_debugPush(debugLines, "Transform uniform scale enforced=" + linked + " readback=" + _gridMaker_readPropertyValue(uniform));
+        _gridMaker_debugPush(debugLines, "Transform uniform scale enabled readback=" + _gridMaker_readPropertyValue(uniform));
+        return;
+    }
+
+    // Some hosts require a hard toggle cycle.
+    _gridMaker_debugPush(debugLines, "Transform uniform initial enable failed; trying explicit off/on cycle");
+    _gridMaker_trySetToggleProperty(uniform, 0, debugLines, "transform.uniformScale=0");
+    _gridMaker_sleepSafe(40);
+    ok = _gridMaker_trySetToggleProperty(uniform, true, debugLines, "transform.uniformScale=true.retry");
+    if (!ok) {
+        ok = _gridMaker_trySetToggleProperty(uniform, 1, debugLines, "transform.uniformScale=1.retry");
+    }
+    if (ok) {
+        _gridMaker_debugPush(debugLines, "Transform uniform scale retry enabled readback=" + _gridMaker_readPropertyValue(uniform));
         return;
     }
 

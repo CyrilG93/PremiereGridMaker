@@ -1,4 +1,4 @@
-# Grid Maker (CEP) - v1.1.4
+# Grid Maker (CEP) - v1.1.5
 
 Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 
@@ -120,6 +120,14 @@ window.PGM_I18N.registerLocale({
 Then include it in `index.html` before `js/main.js`.
 
 ## Changelog
+
+### v1.1.5
+
+- Added Designer overlap visualization on true intersection areas only (instead of styling the whole block), with clearer overlap badges.
+- Improved overlapping-block interaction by keeping selected block on top during edit actions.
+- Hardened QE clip targeting by prioritizing selected QE items to avoid cross-track effect insertion mismatches.
+- Stabilized effect ensure flow by requiring real clip component visibility before continuing placement.
+- Enforced `Transform > Uniform Scale` activation with explicit toggle fallback to improve default Transform behavior after automatic insertion.
 
 ### v1.1.4
 

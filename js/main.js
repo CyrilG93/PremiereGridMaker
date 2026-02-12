@@ -5,7 +5,7 @@
   var cepBridge = window.cep || null;
   var csInterface = (typeof CSInterface !== "undefined") ? new CSInterface() : null;
   var i18n = window.PGM_I18N || { defaultLocale: "en", locales: {} };
-  var APP_VERSION = "1.1.4";
+  var APP_VERSION = "1.1.5";
   var RELEASE_API_URL = "https://api.github.com/repos/CyrilG93/PremiereGridMaker/releases/latest";
   var DESIGNER_GRID_SIZE = 10;
 
@@ -598,7 +598,7 @@
       (a.y + a.h > b.y);
   }
 
-  function designerCanPlace(candidate, ignoreId) {
+  function designerCanPlace(candidate, ignoreId, allowOverlap) {
     if (!candidate) {
       return false;
     }
@@ -608,16 +608,89 @@
     if (candidate.x + candidate.w > DESIGNER_GRID_SIZE || candidate.y + candidate.h > DESIGNER_GRID_SIZE) {
       return false;
     }
-    for (var i = 0; i < state.designer.blocks.length; i += 1) {
-      var other = state.designer.blocks[i];
-      if (ignoreId && other.id === ignoreId) {
-        continue;
-      }
-      if (designerBlocksOverlap(candidate, other)) {
-        return false;
+    if (allowOverlap === false) {
+      for (var i = 0; i < state.designer.blocks.length; i += 1) {
+        var other = state.designer.blocks[i];
+        if (ignoreId && other.id === ignoreId) {
+          continue;
+        }
+        if (designerBlocksOverlap(candidate, other)) {
+          return false;
+        }
       }
     }
     return true;
+  }
+
+  function designerOverlapCountForBlock(block) {
+    if (!block) {
+      return 0;
+    }
+    var count = 0;
+    for (var i = 0; i < state.designer.blocks.length; i += 1) {
+      var other = state.designer.blocks[i];
+      if (!other || other.id === block.id) {
+        continue;
+      }
+      if (designerBlocksOverlap(block, other)) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  function designerOverlapRegionsForBlock(block) {
+    var regions = [];
+    if (!block || !(block.w > 0) || !(block.h > 0)) {
+      return regions;
+    }
+
+    for (var i = 0; i < state.designer.blocks.length; i += 1) {
+      var other = state.designer.blocks[i];
+      if (!other || other.id === block.id) {
+        continue;
+      }
+      if (!designerBlocksOverlap(block, other)) {
+        continue;
+      }
+
+      var ix = Math.max(block.x, other.x);
+      var iy = Math.max(block.y, other.y);
+      var ix2 = Math.min(block.x + block.w, other.x + other.w);
+      var iy2 = Math.min(block.y + block.h, other.y + other.h);
+      var iw = ix2 - ix;
+      var ih = iy2 - iy;
+      if (!(iw > 0) || !(ih > 0)) {
+        continue;
+      }
+
+      regions.push({
+        left: ((ix - block.x) * 100) / block.w,
+        top: ((iy - block.y) * 100) / block.h,
+        width: (iw * 100) / block.w,
+        height: (ih * 100) / block.h
+      });
+    }
+
+    return regions;
+  }
+
+  function designerBringBlockToFront(blockId) {
+    if (!blockId) {
+      return;
+    }
+    var index = -1;
+    for (var i = 0; i < state.designer.blocks.length; i += 1) {
+      if (state.designer.blocks[i].id === blockId) {
+        index = i;
+        break;
+      }
+    }
+    if (index < 0 || index === state.designer.blocks.length - 1) {
+      return;
+    }
+    var moved = state.designer.blocks.splice(index, 1)[0];
+    state.designer.blocks.push(moved);
   }
 
   function updateSummary() {
@@ -977,6 +1050,7 @@
     }
 
     state.designer.selectedBlockId = blockId;
+    designerBringBlockToFront(blockId);
     designerDrag = {
       id: blockId,
       action: action,
@@ -1110,15 +1184,6 @@
     }
 
     var blocks = state.designer.blocks.slice();
-    blocks.sort(function (a, b) {
-      if (a.y !== b.y) {
-        return a.y - b.y;
-      }
-      if (a.x !== b.x) {
-        return a.x - b.x;
-      }
-      return a.id.localeCompare(b.id);
-    });
 
     for (var i = 0; i < blocks.length; i += 1) {
       (function (block, index) {
@@ -1136,7 +1201,31 @@
         cell.style.top = (block.y * 100 / DESIGNER_GRID_SIZE) + "%";
         cell.style.width = (block.w * 100 / DESIGNER_GRID_SIZE) + "%";
         cell.style.height = (block.h * 100 / DESIGNER_GRID_SIZE) + "%";
+        cell.style.zIndex = state.designer.selectedBlockId === block.id
+          ? "1000"
+          : String(10 + index);
         cell.setAttribute("data-id", block.id);
+
+        var overlapCount = designerOverlapCountForBlock(block);
+        if (overlapCount > 0) {
+          cell.className += " overlap";
+          var overlapRegions = designerOverlapRegionsForBlock(block);
+          for (var r = 0; r < overlapRegions.length; r += 1) {
+            var region = overlapRegions[r];
+            var overlapRegion = document.createElement("span");
+            overlapRegion.className = "designer-overlap-region";
+            overlapRegion.style.left = region.left + "%";
+            overlapRegion.style.top = region.top + "%";
+            overlapRegion.style.width = region.width + "%";
+            overlapRegion.style.height = region.height + "%";
+            cell.appendChild(overlapRegion);
+          }
+
+          var overlapBadge = document.createElement("span");
+          overlapBadge.className = "designer-overlap-badge";
+          overlapBadge.textContent = "+" + String(overlapCount);
+          cell.appendChild(overlapBadge);
+        }
 
         var label = document.createElement("span");
         label.className = "designer-cell-label";
@@ -1160,6 +1249,7 @@
 
         cell.addEventListener("click", function (event) {
           event.stopPropagation();
+          designerBringBlockToFront(block.id);
           state.designer.selectedBlockId = block.id;
           if (state.designer.editMode) {
             renderPreview();
@@ -1515,7 +1605,7 @@
     for (var y = 0; y <= DESIGNER_GRID_SIZE - height; y += 1) {
       for (var x = 0; x <= DESIGNER_GRID_SIZE - width; x += 1) {
         var candidate = { id: "", x: x, y: y, w: width, h: height };
-        if (designerCanPlace(candidate, "")) {
+        if (designerCanPlace(candidate, "", false)) {
           return { x: x, y: y, w: width, h: height };
         }
       }
