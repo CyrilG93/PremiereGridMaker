@@ -1,4 +1,4 @@
-# Grid Maker (CEP) - v1.1.5
+# Grid Maker (CEP) - v1.1.6
 
 Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 
@@ -80,6 +80,14 @@ for v in {8..15}; do defaults write "com.adobe.CSXS.$v" PlayerDebugMode 1; done
 
 The extension adds/uses `Transform` and `Crop`, then positions/scales the selected clip for the target grid cell.
 
+## Premiere Preference Recommendation (Important)
+
+To avoid scale interpretation mismatches (especially in mixed 4K/HD sequences), set:
+
+- `Premiere Pro > Preferences > Media > Default Media Scaling = None` (recommended for deterministic native behavior)
+
+If your team uses a Fit workflow, keep it consistent on all clips before using Grid Maker (do not mix clips with and without frame-fit behavior in the same operation).
+
 ## Compatibility
 
 - Host: Adobe Premiere Pro 2025+ (`PPRO 25.0+`)
@@ -120,6 +128,11 @@ window.PGM_I18N.registerLocale({
 Then include it in `index.html` before `js/main.js`.
 
 ## Changelog
+
+### v1.1.6
+
+- Switched placement scale computation to strict native mode (no implicit fit-to-frame assumption).
+- Added documentation note for `Default Media Scaling` preference to avoid scale mismatches on mixed-resolution timelines.
 
 ### v1.1.5
 

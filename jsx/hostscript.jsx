@@ -179,19 +179,10 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
         var currentPlacementPos = _gridMaker_getCurrentPosition(placementComp);
         var placementModeHint = _gridMaker_detectPositionMode(placementKind, currentPlacementPos, frameW, frameH);
 
-        // Some Premiere setups apply implicit "fit to frame" behavior before Motion scale.
-        // In that case, Motion scale=100 maps to a frame-fitted size, not the raw native size.
         var intrinsicScaleFactor = 1.0;
         var assumeFrameFit = false;
-        if (
-            placementKind === "motion" &&
-            placementModeHint === "motion_normalized" &&
-            _gridMaker_isReasonableFrameSize(sourceW, sourceH) &&
-            Math.abs((sourceW / sourceH) - frameAspect) > 0.0001
-        ) {
-            assumeFrameFit = true;
-            intrinsicScaleFactor = Math.min(frameW / sourceW, frameH / sourceH);
-        }
+        // Native mode: always compute Motion scale from the clip's native pixels.
+        // Do not assume any implicit "fit/set to frame" factor.
         if (!_gridMaker_isFiniteNumber(intrinsicScaleFactor) || !(intrinsicScaleFactor > 0)) {
             intrinsicScaleFactor = 1.0;
             assumeFrameFit = false;
@@ -486,15 +477,8 @@ function gridMaker_applyToSelectedCustomCell(leftNorm, topNorm, widthNorm, heigh
 
         var intrinsicScaleFactor = 1.0;
         var assumeFrameFit = false;
-        if (
-            placementKind === "motion" &&
-            placementModeHint === "motion_normalized" &&
-            _gridMaker_isReasonableFrameSize(sourceW, sourceH) &&
-            Math.abs((sourceW / sourceH) - frameAspect) > 0.0001
-        ) {
-            assumeFrameFit = true;
-            intrinsicScaleFactor = Math.min(frameW / sourceW, frameH / sourceH);
-        }
+        // Native mode: always compute Motion scale from the clip's native pixels.
+        // Do not assume any implicit "fit/set to frame" factor.
         if (!_gridMaker_isFiniteNumber(intrinsicScaleFactor) || !(intrinsicScaleFactor > 0)) {
             intrinsicScaleFactor = 1.0;
             assumeFrameFit = false;
