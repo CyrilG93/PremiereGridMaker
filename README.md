@@ -59,12 +59,12 @@ Use this only if installer scripts are not available.
 
 Windows:
 ```powershell
-reg add "HKCU\Software\Adobe\CSXS.11" /v PlayerDebugMode /t REG_SZ /d 1 /f
+8..15 | ForEach-Object { reg add "HKCU\Software\Adobe\CSXS.$_" /v PlayerDebugMode /t REG_SZ /d 1 /f }
 ```
 
 macOS:
 ```bash
-defaults write com.adobe.CSXS.11 PlayerDebugMode 1
+for v in {8..15}; do defaults write "com.adobe.CSXS.$v" PlayerDebugMode 1; done
 ```
 
 3. Open Premiere Pro:

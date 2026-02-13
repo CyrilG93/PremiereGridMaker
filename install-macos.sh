@@ -81,15 +81,29 @@ for item in "${required_items[@]}"; do
 done
 
 if [[ "$skip_debug" == "0" ]]; then
-  for version in 8 9 10 11; do
-    defaults write "com.adobe.CSXS.${version}" PlayerDebugMode 1
+  debug_warn="0"
+  for version in $(seq 8 15); do
+    domain="com.adobe.CSXS.${version}"
+    if ! defaults write "${domain}" PlayerDebugMode 1 >/dev/null 2>&1; then
+      echo "Warning: failed to set PlayerDebugMode for ${domain}"
+      debug_warn="1"
+      continue
+    fi
+    readback="$(defaults read "${domain}" PlayerDebugMode 2>/dev/null || true)"
+    if [[ "${readback}" != "1" ]]; then
+      echo "Warning: PlayerDebugMode readback is not 1 for ${domain} (got: ${readback:-<empty>})"
+      debug_warn="1"
+    fi
   done
+  if [[ "${debug_warn}" == "1" ]]; then
+    echo "Warning: some CEP debug keys could not be validated. Panel may stay blank until PlayerDebugMode=1 is applied."
+  fi
 fi
 
 echo "Installed runtime files for '${extension_name}' to: ${install_path}"
 if [[ "$skip_debug" == "1" ]]; then
   echo "Skipped CEP debug mode changes."
 else
-  echo "CEP debug mode enabled for com.adobe.CSXS.8 to com.adobe.CSXS.11."
+  echo "CEP debug mode enabled for com.adobe.CSXS.8 to com.adobe.CSXS.15."
 fi
 echo "Open Premiere Pro: Window > Extensions > Grid Maker"

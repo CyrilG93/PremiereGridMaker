@@ -134,8 +134,22 @@ if errorlevel 1 (
 )
 
 if "%SKIP_DEBUG%"=="0" (
-    for %%V in (8 9 10 11) do (
-        reg add "HKCU\Software\Adobe\CSXS.%%V" /v PlayerDebugMode /t REG_SZ /d 1 /f >nul
+    set "DEBUG_WARN=0"
+    for /L %%V in (8,1,15) do (
+        reg add "HKCU\Software\Adobe\CSXS.%%V" /v PlayerDebugMode /t REG_SZ /d 1 /f >nul 2>&1
+        if errorlevel 1 (
+            echo Warning: failed to set PlayerDebugMode for CSXS.%%V
+            set "DEBUG_WARN=1"
+        ) else (
+            reg query "HKCU\Software\Adobe\CSXS.%%V" /v PlayerDebugMode 2>nul | findstr /R /I "REG_SZ *1" >nul
+            if errorlevel 1 (
+                echo Warning: PlayerDebugMode readback is not 1 for CSXS.%%V
+                set "DEBUG_WARN=1"
+            )
+        )
+    )
+    if "!DEBUG_WARN!"=="1" (
+        echo Warning: some CEP debug keys could not be validated. Panel may stay blank until PlayerDebugMode=1 is applied.
     )
 )
 
@@ -143,7 +157,7 @@ echo Installed runtime files for "%EXT_NAME%" to: %INSTALL_PATH%
 if "%SKIP_DEBUG%"=="1" (
     echo Skipped CEP debug mode changes.
 ) else (
-    echo CEP debug mode enabled for CSXS.8 to CSXS.11 ^(HKCU^).
+    echo CEP debug mode enabled for CSXS.8 to CSXS.15 ^(HKCU^).
 )
 echo Open Premiere Pro: Window ^> Extensions ^> Grid Maker
 set "EXIT_CODE=0"
