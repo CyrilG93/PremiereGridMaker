@@ -84,6 +84,7 @@
   var designerGallery = document.getElementById("designerGallery");
   var designerGalleryCount = document.getElementById("designerGalleryCount");
   var designerGallerySize = document.getElementById("designerGallerySize");
+  var designerGalleryTools = document.getElementById("designerGalleryTools");
 
   var designerDrag = null;
 
@@ -495,7 +496,7 @@
   }
 
   function applyDesignerGallerySize(nextSize, persist) {
-    var size = clampInt(nextSize, 96, 220, 96);
+    var size = clampInt(nextSize, 56, 140, 64);
     state.designer.gallerySize = size;
 
     if (designerGallery) {
@@ -1874,6 +1875,14 @@
   if (designerGalleryPanel) {
     designerGalleryPanel.addEventListener("toggle", function () {
       schedulePreviewFit();
+    });
+  }
+
+  if (designerGalleryTools) {
+    ["click", "mousedown", "pointerdown", "touchstart"].forEach(function (evtName) {
+      designerGalleryTools.addEventListener(evtName, function (event) {
+        event.stopPropagation();
+      });
     });
   }
 
