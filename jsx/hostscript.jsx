@@ -2687,6 +2687,7 @@ function _gridMaker_designerSanitizeId(raw) {
 
 function _gridMaker_designerNormalizeBlocks(rawBlocks) {
     var out = [];
+    var minSize = 0.1;
     if (!(rawBlocks instanceof Array)) {
         return out;
     }
@@ -2695,23 +2696,27 @@ function _gridMaker_designerNormalizeBlocks(rawBlocks) {
         if (!b) {
             continue;
         }
-        var x = parseInt(b.x, 10);
-        var y = parseInt(b.y, 10);
-        var w = parseInt(b.w, 10);
-        var h = parseInt(b.h, 10);
+        var x = _gridMaker_toNumber(b.x);
+        var y = _gridMaker_toNumber(b.y);
+        var w = _gridMaker_toNumber(b.w);
+        var h = _gridMaker_toNumber(b.h);
         var id = _gridMaker_designerSanitizeId(b.id || ("cell_" + i));
         if (isNaN(x) || isNaN(y) || isNaN(w) || isNaN(h)) {
             continue;
         }
-        if (w < 1 || h < 1) {
+        if (w < minSize || h < minSize) {
             continue;
         }
         if (x < 0 || y < 0) {
             continue;
         }
-        if (x + w > 10 || y + h > 10) {
+        if (x + w > 10.000001 || y + h > 10.000001) {
             continue;
         }
+        x = Math.round(x * 1000) / 1000;
+        y = Math.round(y * 1000) / 1000;
+        w = Math.round(w * 1000) / 1000;
+        h = Math.round(h * 1000) / 1000;
         out.push({
             id: id,
             x: x,

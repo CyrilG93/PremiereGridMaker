@@ -8,6 +8,8 @@
   var APP_VERSION = "1.1.6";
   var RELEASE_API_URL = "https://api.github.com/repos/CyrilG93/PremiereGridMaker/releases/latest";
   var DESIGNER_GRID_SIZE = 10;
+  var DESIGNER_FREE_SUBDIVISION = 10;
+  var DESIGNER_MIN_BLOCK_SIZE = 1 / DESIGNER_FREE_SUBDIVISION;
 
   var state = {
     rows: 2,
@@ -19,6 +21,7 @@
     designer: {
       enabled: false,
       editMode: false,
+      freeMode: false,
       blocks: [],
       selectedBlockId: "",
       configs: [],
@@ -71,6 +74,7 @@
   var classicGridControls = document.getElementById("classicGridControls");
   var designerControls = document.getElementById("designerControls");
   var designerEditBtn = document.getElementById("designerEditBtn");
+  var designerFreeBtn = document.getElementById("designerFreeBtn");
   var designerAddBtn = document.getElementById("designerAddBtn");
   var designerRemoveBtn = document.getElementById("designerRemoveBtn");
   var designerNewBtn = document.getElementById("designerNewBtn");
@@ -458,6 +462,38 @@
     return n;
   }
 
+  function roundToStep(value, step) {
+    if (!(step > 0)) {
+      return value;
+    }
+    return Math.round(value / step) * step;
+  }
+
+  function clampStep(value, min, max, step, fallback) {
+    var raw = parseFloat(value);
+    if (isNaN(raw)) {
+      raw = fallback;
+    }
+    if (step > 0) {
+      raw = roundToStep(raw, step);
+    }
+    if (raw < min) {
+      raw = min;
+    }
+    if (raw > max) {
+      raw = max;
+    }
+    return Math.round(raw * 1000) / 1000;
+  }
+
+  function getDesignerStep() {
+    return state.designer.freeMode ? (1 / DESIGNER_FREE_SUBDIVISION) : 1;
+  }
+
+  function getDesignerGridUnits() {
+    return DESIGNER_GRID_SIZE / getDesignerStep();
+  }
+
   function applyDesignerGallerySize(nextSize, persist) {
     var size = clampInt(nextSize, 96, 220, 96);
     state.designer.gallerySize = size;
@@ -503,32 +539,41 @@
     return clampNumber(v, 0, 1).toFixed(6);
   }
 
+  function formatDesignerSizePercent(gridUnits) {
+    var pct = (clampNumber(gridUnits, 0, DESIGNER_GRID_SIZE) / DESIGNER_GRID_SIZE) * 100;
+    var rounded = Math.round(pct * 10) / 10;
+    if (Math.abs(rounded - Math.round(rounded)) < 0.01) {
+      return String(Math.round(rounded)) + "%";
+    }
+    return rounded.toFixed(1) + "%";
+  }
+
   function normalizeDesignerBlock(raw, fallbackId) {
     if (!raw) {
       return null;
     }
-    var x = parseInt(raw.x, 10);
-    var y = parseInt(raw.y, 10);
-    var w = parseInt(raw.w, 10);
-    var h = parseInt(raw.h, 10);
+    var x = parseFloat(raw.x);
+    var y = parseFloat(raw.y);
+    var w = parseFloat(raw.w);
+    var h = parseFloat(raw.h);
     if (isNaN(x) || isNaN(y) || isNaN(w) || isNaN(h)) {
       return null;
     }
-    if (w < 1 || h < 1) {
+    if (w < DESIGNER_MIN_BLOCK_SIZE || h < DESIGNER_MIN_BLOCK_SIZE) {
       return null;
     }
     if (x < 0 || y < 0) {
       return null;
     }
-    if (x + w > DESIGNER_GRID_SIZE || y + h > DESIGNER_GRID_SIZE) {
+    if (x + w > DESIGNER_GRID_SIZE + 0.000001 || y + h > DESIGNER_GRID_SIZE + 0.000001) {
       return null;
     }
     return {
       id: String(raw.id || fallbackId || ("cell_" + Date.now())),
-      x: x,
-      y: y,
-      w: w,
-      h: h
+      x: Math.round(x * 1000) / 1000,
+      y: Math.round(y * 1000) / 1000,
+      w: Math.round(w * 1000) / 1000,
+      h: Math.round(h * 1000) / 1000
     };
   }
 
@@ -602,10 +647,10 @@
     if (!candidate) {
       return false;
     }
-    if (candidate.x < 0 || candidate.y < 0 || candidate.w < 1 || candidate.h < 1) {
+    if (candidate.x < 0 || candidate.y < 0 || candidate.w < DESIGNER_MIN_BLOCK_SIZE || candidate.h < DESIGNER_MIN_BLOCK_SIZE) {
       return false;
     }
-    if (candidate.x + candidate.w > DESIGNER_GRID_SIZE || candidate.y + candidate.h > DESIGNER_GRID_SIZE) {
+    if (candidate.x + candidate.w > DESIGNER_GRID_SIZE + 0.000001 || candidate.y + candidate.h > DESIGNER_GRID_SIZE + 0.000001) {
       return false;
     }
     if (allowOverlap === false) {
@@ -1081,14 +1126,16 @@
 
     var base = designerDrag.startBlock;
     var rect = designerDrag.stageRect;
-    var stepX = rect.width / DESIGNER_GRID_SIZE;
-    var stepY = rect.height / DESIGNER_GRID_SIZE;
+    var dragStep = getDesignerStep();
+    var gridUnits = getDesignerGridUnits();
+    var stepX = rect.width / gridUnits;
+    var stepY = rect.height / gridUnits;
     if (!(stepX > 0) || !(stepY > 0)) {
       return;
     }
 
-    var dxCells = Math.round((event.clientX - designerDrag.startClientX) / stepX);
-    var dyCells = Math.round((event.clientY - designerDrag.startClientY) / stepY);
+    var dxCells = Math.round((event.clientX - designerDrag.startClientX) / stepX) * dragStep;
+    var dyCells = Math.round((event.clientY - designerDrag.startClientY) / stepY) * dragStep;
     var candidate = {
       id: base.id,
       x: base.x,
@@ -1098,11 +1145,11 @@
     };
 
     if (designerDrag.action === "move") {
-      candidate.x = clampInt(base.x + dxCells, 0, DESIGNER_GRID_SIZE - base.w, base.x);
-      candidate.y = clampInt(base.y + dyCells, 0, DESIGNER_GRID_SIZE - base.h, base.y);
+      candidate.x = clampStep(base.x + dxCells, 0, DESIGNER_GRID_SIZE - base.w, dragStep, base.x);
+      candidate.y = clampStep(base.y + dyCells, 0, DESIGNER_GRID_SIZE - base.h, dragStep, base.y);
     } else {
-      candidate.w = clampInt(base.w + dxCells, 1, DESIGNER_GRID_SIZE - base.x, base.w);
-      candidate.h = clampInt(base.h + dyCells, 1, DESIGNER_GRID_SIZE - base.y, base.h);
+      candidate.w = clampStep(base.w + dxCells, dragStep, DESIGNER_GRID_SIZE - base.x, dragStep, base.w);
+      candidate.h = clampStep(base.h + dyCells, dragStep, DESIGNER_GRID_SIZE - base.y, dragStep, base.h);
     }
 
     if (!designerCanPlace(candidate, candidate.id)) {
@@ -1232,6 +1279,16 @@
         label.textContent = String(index + 1);
         cell.appendChild(label);
 
+        var widthLabel = document.createElement("span");
+        widthLabel.className = "designer-cell-size designer-cell-size-x";
+        widthLabel.textContent = formatDesignerSizePercent(block.w);
+        cell.appendChild(widthLabel);
+
+        var heightLabel = document.createElement("span");
+        heightLabel.className = "designer-cell-size designer-cell-size-y";
+        heightLabel.textContent = formatDesignerSizePercent(block.h);
+        cell.appendChild(heightLabel);
+
         if (state.designer.editMode) {
           var handle = document.createElement("span");
           handle.className = "designer-resize-handle";
@@ -1298,6 +1355,14 @@
       : t("designer.edit_off");
     designerEditBtn.classList.toggle("edit-on", !!state.designer.editMode);
     designerEditBtn.classList.toggle("edit-off", !state.designer.editMode);
+    if (designerFreeBtn) {
+      designerFreeBtn.textContent = state.designer.freeMode
+        ? t("designer.free_on")
+        : t("designer.free_off");
+      designerFreeBtn.classList.toggle("free-on", !!state.designer.freeMode);
+      designerFreeBtn.classList.toggle("free-off", !state.designer.freeMode);
+      designerFreeBtn.disabled = !state.designer.enabled || !state.designer.editMode;
+    }
 
     if (designerModeBtn) {
       designerModeBtn.classList.toggle("active", !!state.designer.enabled);
@@ -1365,11 +1430,7 @@
         var name = document.createElement("strong");
         name.textContent = cfg.name || cfg.id;
 
-        var info = document.createElement("span");
-        info.textContent = t("designer.gallery_cells", { count: blocks.length });
-
         meta.appendChild(name);
-        meta.appendChild(info);
 
         item.appendChild(thumb);
         item.appendChild(meta);
@@ -1395,6 +1456,9 @@
     }
 
     state.designer.enabled = next;
+    if (!next) {
+      state.designer.freeMode = false;
+    }
     stopDesignerDrag();
 
     if (classicGridControls) {
@@ -1591,6 +1655,7 @@
   function createNewDesignerConfig() {
     state.designer.activeConfigId = "";
     state.designer.editMode = true;
+    state.designer.freeMode = false;
     stopDesignerDrag();
     adoptDesignerBlocks(makeDefaultDesignerBlocks());
     if (designerNameInput) {
@@ -1680,9 +1745,23 @@
 
   function toggleDesignerEditMode() {
     state.designer.editMode = !state.designer.editMode;
+    if (!state.designer.editMode) {
+      state.designer.freeMode = false;
+    }
     stopDesignerDrag();
     appendDebug("UI> designer edit mode " + (state.designer.editMode ? "ON" : "OFF"));
     setStatusKey(state.designer.editMode ? "status.designer_edit_on" : "status.designer_edit_off", {}, "ok");
+    renderPreview();
+  }
+
+  function toggleDesignerFreeMode() {
+    if (!state.designer.enabled || !state.designer.editMode) {
+      return;
+    }
+    state.designer.freeMode = !state.designer.freeMode;
+    stopDesignerDrag();
+    appendDebug("UI> designer free mode " + (state.designer.freeMode ? "ON" : "OFF"));
+    setStatusKey(state.designer.freeMode ? "status.designer_free_on" : "status.designer_free_off", {}, "ok");
     renderPreview();
   }
 
@@ -1822,6 +1901,15 @@
         return;
       }
       toggleDesignerEditMode();
+    });
+  }
+
+  if (designerFreeBtn) {
+    designerFreeBtn.addEventListener("click", function () {
+      if (!state.designer.enabled || !state.designer.editMode) {
+        return;
+      }
+      toggleDesignerFreeMode();
     });
   }
 

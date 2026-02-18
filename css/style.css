@@ -117,6 +117,23 @@ h1 {
   color: #ffe3e3;
 }
 
+#designerFreeBtn.free-on {
+  border-color: #2f89ff;
+  background: rgba(47, 137, 255, 0.24);
+  color: #e4f1ff;
+}
+
+#designerFreeBtn.free-off {
+  border-color: #5a5a5a;
+  background: rgba(90, 90, 90, 0.2);
+  color: #d0d0d0;
+}
+
+.designer-controls button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .lang-picker {
   justify-self: end;
 }
@@ -212,7 +229,7 @@ input[type="range"] {
 
 .designer-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
 }
 
@@ -445,6 +462,28 @@ input[type="range"] {
   pointer-events: none;
 }
 
+.designer-cell-size {
+  position: absolute;
+  font-size: 9px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+}
+
+.designer-cell-size-x {
+  left: 50%;
+  bottom: 3px;
+  transform: translateX(-50%);
+}
+
+.designer-cell-size-y {
+  top: 50%;
+  right: 3px;
+  transform: translateY(-50%) rotate(-90deg);
+  transform-origin: center;
+}
+
 .designer-overlap-badge {
   position: absolute;
   right: 3px;
@@ -504,6 +543,11 @@ body.designer-dragging .designer-resize-handle {
 .debug-panel {
   min-height: 0;
   overflow: hidden;
+  padding: 2px 6px;
+}
+
+.debug-panel[open] {
+  padding: clamp(7px, 2vw, 10px);
 }
 
 .debug-summary {
@@ -511,6 +555,9 @@ body.designer-dragging .designer-resize-handle {
   user-select: none;
   list-style: none;
   font-weight: 600;
+  margin: 0;
+  padding: 0;
+  line-height: 1.1;
 }
 
 .debug-summary::-webkit-details-marker {
