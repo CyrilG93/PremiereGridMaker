@@ -1,4 +1,4 @@
-# Grid Maker (CEP) - v1.1.6
+# Grid Maker (CEP) - v1.2.0
 
 Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 
@@ -11,7 +11,7 @@ Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 - No manual position presets required
 - Grid Designer mode (10x10 canvas): irregular layouts with draggable/resizable blocks
 - Designer presets per ratio, saved locally with gallery preview and quick load/delete
-- UI localization: English (default) and French
+- UI localization: English (default), French, Spanish, German, Portuguese (Brazil), Japanese, Italian, Chinese (Simplified), Russian
 - Language selector with flag dropdown
 - Collapsible debug panel (collapsed by default)
 - Built-in update check against latest GitHub release (with direct ZIP download button when newer version exists)
@@ -111,6 +111,13 @@ Localization files are modular and easy to extend:
 - `js/i18n-registry.js`: locale registry
 - `js/locales/en.js`: English strings
 - `js/locales/fr.js`: French strings
+- `js/locales/es.js`: Spanish strings
+- `js/locales/de.js`: German strings
+- `js/locales/pt-BR.js`: Portuguese (Brazil) strings
+- `js/locales/ja.js`: Japanese strings
+- `js/locales/it.js`: Italian strings
+- `js/locales/zh-CN.js`: Chinese (Simplified) strings
+- `js/locales/ru.js`: Russian strings
 
 To add a new language, add a new file in `js/locales/` and call:
 
@@ -128,6 +135,15 @@ window.PGM_I18N.registerLocale({
 Then include it in `index.html` before `js/main.js`.
 
 ## Changelog
+
+### v1.2.0
+
+- Added 7 new UI localizations: Spanish, German, Portuguese (Brazil), Japanese, Italian, Chinese (Simplified), Russian.
+- Improved small-panel usability with a minimum layout height and vertical scrolling instead of shrinking controls out of view.
+- Designer presets gallery is now collapsible (like Debug), with better compact layout and cleaner header behavior.
+- Fixed designer preset thumbnail aspect ratio so each saved config preview respects its own ratio (for example `9:16` no longer shown as `16:9`).
+- Reduced gallery thumbnail size range and fixed gallery size persistence across Premiere restarts.
+- Removed duplicate Debug title in expanded panel (single title source in collapse header).
 
 ### v1.1.6
 
