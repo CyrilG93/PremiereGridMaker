@@ -645,7 +645,7 @@ body.designer-dragging .designer-resize-handle {
 
 .debug-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
