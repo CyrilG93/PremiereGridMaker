@@ -263,7 +263,7 @@ input[type="range"] {
 .designer-gallery-summary {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 8px;
   cursor: pointer;
   user-select: none;
