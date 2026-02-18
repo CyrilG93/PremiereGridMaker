@@ -1412,6 +1412,13 @@
 
         var thumb = document.createElement("div");
         thumb.className = "designer-thumb";
+        var thumbRatioW = Number(cfg.ratioW);
+        var thumbRatioH = Number(cfg.ratioH);
+        if (!(thumbRatioW > 0) || !(thumbRatioH > 0)) {
+          thumbRatioW = state.ratioW;
+          thumbRatioH = state.ratioH;
+        }
+        thumb.style.aspectRatio = thumbRatioW + " / " + thumbRatioH;
         var blocks = cloneDesignerBlocks(cfg.blocks || []);
         for (var bi = 0; bi < blocks.length; bi += 1) {
           var block = blocks[bi];
@@ -1860,6 +1867,12 @@
 
   if (debugPanel) {
     debugPanel.addEventListener("toggle", function () {
+      schedulePreviewFit();
+    });
+  }
+
+  if (designerGalleryPanel) {
+    designerGalleryPanel.addEventListener("toggle", function () {
       schedulePreviewFit();
     });
   }

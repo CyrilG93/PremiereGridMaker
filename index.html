@@ -66,17 +66,21 @@
       </div>
     </section>
 
-    <section id="designerGalleryPanel" class="panel" hidden>
-      <div class="grid-header">
-        <strong data-i18n="designer.configs">Configs</strong>
-        <div class="designer-gallery-tools">
-          <label for="designerGallerySize" class="designer-gallery-size-label" data-i18n="designer.gallery_size">Size</label>
-          <input id="designerGallerySize" class="designer-gallery-size" type="range" min="96" max="220" step="2" value="96" />
-          <span id="designerGalleryCount">0</span>
+    <details id="designerGalleryPanel" class="panel designer-gallery-panel" hidden open>
+      <summary class="designer-gallery-summary">
+        <span data-i18n="designer.configs">Configs</span>
+      </summary>
+      <div class="designer-gallery-body">
+        <div class="designer-gallery-header">
+          <div class="designer-gallery-tools">
+            <label for="designerGallerySize" class="designer-gallery-size-label" data-i18n="designer.gallery_size">Size</label>
+            <input id="designerGallerySize" class="designer-gallery-size" type="range" min="96" max="220" step="2" value="96" />
+            <span id="designerGalleryCount">0</span>
+          </div>
         </div>
+        <div id="designerGallery" class="designer-gallery"></div>
       </div>
-      <div id="designerGallery" class="designer-gallery"></div>
-    </section>
+    </details>
 
     <section class="panel preview-panel">
       <div class="grid-header">
