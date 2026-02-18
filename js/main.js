@@ -10,6 +10,9 @@
   var DESIGNER_GRID_SIZE = 10;
   var DESIGNER_FREE_SUBDIVISION = 10;
   var DESIGNER_MIN_BLOCK_SIZE = 1 / DESIGNER_FREE_SUBDIVISION;
+  var DESIGNER_GALLERY_MIN = 56;
+  var DESIGNER_GALLERY_MAX = 140;
+  var DESIGNER_GALLERY_DEFAULT = 64;
 
   var state = {
     rows: 2,
@@ -82,7 +85,6 @@
   var designerNameInput = document.getElementById("designerNameInput");
   var designerGalleryPanel = document.getElementById("designerGalleryPanel");
   var designerGallery = document.getElementById("designerGallery");
-  var designerGalleryCount = document.getElementById("designerGalleryCount");
   var designerGallerySize = document.getElementById("designerGallerySize");
   var designerGalleryTools = document.getElementById("designerGalleryTools");
 
@@ -144,7 +146,7 @@
   }
 
   function resolveInitialGallerySize() {
-    var fallback = 96;
+    var fallback = DESIGNER_GALLERY_DEFAULT;
     var stored = null;
 
     try {
@@ -157,7 +159,7 @@
     if (isNaN(parsed)) {
       return fallback;
     }
-    return clampInt(parsed, 96, 220, fallback);
+    return clampInt(parsed, DESIGNER_GALLERY_MIN, DESIGNER_GALLERY_MAX, fallback);
   }
 
   function getLocaleStrings() {
@@ -496,7 +498,7 @@
   }
 
   function applyDesignerGallerySize(nextSize, persist) {
-    var size = clampInt(nextSize, 56, 140, 64);
+    var size = clampInt(nextSize, DESIGNER_GALLERY_MIN, DESIGNER_GALLERY_MAX, DESIGNER_GALLERY_DEFAULT);
     state.designer.gallerySize = size;
 
     if (designerGallery) {
@@ -1380,19 +1382,17 @@
   }
 
   function renderDesignerGallery() {
-    if (!designerGallery || !designerGalleryCount) {
+    if (!designerGallery) {
       return;
     }
 
     if (!state.designer.enabled) {
       designerGallery.innerHTML = "";
-      designerGalleryCount.textContent = "0";
       return;
     }
 
     designerGallery.innerHTML = "";
     var configs = state.designer.configs || [];
-    designerGalleryCount.textContent = String(configs.length);
 
     if (!configs.length) {
       var empty = document.createElement("div");
