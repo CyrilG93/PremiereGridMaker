@@ -1,12 +1,12 @@
 // Main entry for classic grid placement (row/col in an N x M layout).
-function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
+function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH, marginPx) {
     var debugLines = [];
     function dbg(message) {
         _gridMaker_debugPush(debugLines, message);
     }
 
     try {
-        dbg("INPUT row=" + row + " col=" + col + " rows=" + rows + " cols=" + cols + " ratio=" + ratioW + ":" + ratioH);
+        dbg("INPUT row=" + row + " col=" + col + " rows=" + rows + " cols=" + cols + " ratio=" + ratioW + ":" + ratioH + " marginPx=" + marginPx);
         app.enableQE();
         dbg("QE enabled");
 
@@ -23,7 +23,8 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
         cols = parseInt(cols, 10);
         ratioW = parseFloat(ratioW);
         ratioH = parseFloat(ratioH);
-        dbg("PARSED row=" + row + " col=" + col + " rows=" + rows + " cols=" + cols + " ratio=" + ratioW + ":" + ratioH);
+        marginPx = _gridMaker_parseMarginPx(marginPx);
+        dbg("PARSED row=" + row + " col=" + col + " rows=" + rows + " cols=" + cols + " ratio=" + ratioW + ":" + ratioH + " marginPx=" + marginPx);
 
         if (rows < 1 || cols < 1) {
             dbg("Invalid grid");
@@ -156,12 +157,26 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
         var frameW = frameSize.width;
         var frameH = frameSize.height;
         var frameAspect = frameW / frameH;
-        var cellW = frameW / cols;
-        var cellH = frameH / rows;
+        var cellRect = _gridMaker_computePaddedCellRect(
+            frameW,
+            frameH,
+            col / cols,
+            row / rows,
+            1 / cols,
+            1 / rows,
+            marginPx,
+            debugLines
+        );
+        if (!cellRect) {
+            dbg("Invalid effective cell size after margin");
+            return _gridMaker_result("ERR", "invalid_grid", null, debugLines);
+        }
+        var cellW = cellRect.width;
+        var cellH = cellRect.height;
         var cellAspect = cellW / cellH;
         var preferHeightAxis = cellAspect <= 1.0;
-        dbg("Frame size " + frameW + "x" + frameH + " aspect=" + frameAspect);
-        dbg("Cell size " + cellW.toFixed(3) + "x" + cellH.toFixed(3) + " aspect=" + cellAspect.toFixed(6) + " preferHeightAxis=" + preferHeightAxis);
+        dbg("Frame size " + frameW + "x" + frameH + " aspect=" + frameAspect + " marginPx=" + marginPx);
+        dbg("Cell size " + cellW.toFixed(3) + "x" + cellH.toFixed(3) + " aspect=" + cellAspect.toFixed(6) + " preferHeightAxis=" + preferHeightAxis + " center=[" + cellRect.centerX.toFixed(3) + "," + cellRect.centerY.toFixed(3) + "]");
 
         var cropL = 0.0;
         var cropR = 0.0;
@@ -250,8 +265,8 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
         visX = 1.0 - (cropL + cropR) / 100.0;
         visY = 1.0 - (cropT + cropB) / 100.0;
 
-        var x = frameW * ((col + 0.5) / cols);
-        var y = frameH * ((row + 0.5) / rows);
+        var x = cellRect.centerX;
+        var y = cellRect.centerY;
         dbg("Computed placement mode kind=" + placementKind + " modeHint=" + placementModeHint + " assumeFrameFit=" + assumeFrameFit + " intrinsicScaleFactor=" + intrinsicScaleFactor.toFixed(6));
         dbg("Computed source size " + sourceW.toFixed(3) + "x" + sourceH.toFixed(3) + " baseDisplayAt100=" + baseDisplayW.toFixed(3) + "x" + baseDisplayH.toFixed(3));
         dbg("Computed target scale width=" + scaleForWidth.toFixed(3) + " height=" + scaleForHeight.toFixed(3) + " chosen=" + scale.toFixed(3));
@@ -292,14 +307,14 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
 }
 
 // Main entry for designer placement using normalized bounds (0..1).
-function gridMaker_applyToSelectedCustomCell(leftNorm, topNorm, widthNorm, heightNorm, ratioW, ratioH) {
+function gridMaker_applyToSelectedCustomCell(leftNorm, topNorm, widthNorm, heightNorm, ratioW, ratioH, marginPx) {
     var debugLines = [];
     function dbg(message) {
         _gridMaker_debugPush(debugLines, message);
     }
 
     try {
-        dbg("INPUT customCell left=" + leftNorm + " top=" + topNorm + " width=" + widthNorm + " height=" + heightNorm + " ratio=" + ratioW + ":" + ratioH);
+        dbg("INPUT customCell left=" + leftNorm + " top=" + topNorm + " width=" + widthNorm + " height=" + heightNorm + " ratio=" + ratioW + ":" + ratioH + " marginPx=" + marginPx);
         app.enableQE();
         dbg("QE enabled");
 
@@ -316,7 +331,8 @@ function gridMaker_applyToSelectedCustomCell(leftNorm, topNorm, widthNorm, heigh
         heightNorm = parseFloat(heightNorm);
         ratioW = parseFloat(ratioW);
         ratioH = parseFloat(ratioH);
-        dbg("PARSED customCell left=" + leftNorm + " top=" + topNorm + " width=" + widthNorm + " height=" + heightNorm + " ratio=" + ratioW + ":" + ratioH);
+        marginPx = _gridMaker_parseMarginPx(marginPx);
+        dbg("PARSED customCell left=" + leftNorm + " top=" + topNorm + " width=" + widthNorm + " height=" + heightNorm + " ratio=" + ratioW + ":" + ratioH + " marginPx=" + marginPx);
 
         if (!(ratioW > 0) || !(ratioH > 0)) {
             dbg("Invalid ratio");
@@ -453,12 +469,26 @@ function gridMaker_applyToSelectedCustomCell(leftNorm, topNorm, widthNorm, heigh
         var frameW = frameSize.width;
         var frameH = frameSize.height;
         var frameAspect = frameW / frameH;
-        var cellW = frameW * widthNorm;
-        var cellH = frameH * heightNorm;
+        var cellRect = _gridMaker_computePaddedCellRect(
+            frameW,
+            frameH,
+            leftNorm,
+            topNorm,
+            widthNorm,
+            heightNorm,
+            marginPx,
+            debugLines
+        );
+        if (!cellRect) {
+            dbg("Invalid effective custom cell size after margin");
+            return _gridMaker_result("ERR", "invalid_grid", null, debugLines);
+        }
+        var cellW = cellRect.width;
+        var cellH = cellRect.height;
         var cellAspect = cellW / cellH;
         var preferHeightAxis = cellAspect <= 1.0;
-        dbg("Frame size " + frameW + "x" + frameH + " aspect=" + frameAspect);
-        dbg("Custom cell size " + cellW.toFixed(3) + "x" + cellH.toFixed(3) + " aspect=" + cellAspect.toFixed(6) + " preferHeightAxis=" + preferHeightAxis);
+        dbg("Frame size " + frameW + "x" + frameH + " aspect=" + frameAspect + " marginPx=" + marginPx);
+        dbg("Custom cell size " + cellW.toFixed(3) + "x" + cellH.toFixed(3) + " aspect=" + cellAspect.toFixed(6) + " preferHeightAxis=" + preferHeightAxis + " center=[" + cellRect.centerX.toFixed(3) + "," + cellRect.centerY.toFixed(3) + "]");
 
         var cropL = 0.0;
         var cropR = 0.0;
@@ -547,8 +577,8 @@ function gridMaker_applyToSelectedCustomCell(leftNorm, topNorm, widthNorm, heigh
         visX = 1.0 - (cropL + cropR) / 100.0;
         visY = 1.0 - (cropT + cropB) / 100.0;
 
-        var x = frameW * (leftNorm + widthNorm * 0.5);
-        var y = frameH * (topNorm + heightNorm * 0.5);
+        var x = cellRect.centerX;
+        var y = cellRect.centerY;
         dbg("Computed placement mode kind=" + placementKind + " modeHint=" + placementModeHint + " assumeFrameFit=" + assumeFrameFit + " intrinsicScaleFactor=" + intrinsicScaleFactor.toFixed(6));
         dbg("Computed source size " + sourceW.toFixed(3) + "x" + sourceH.toFixed(3) + " baseDisplayAt100=" + baseDisplayW.toFixed(3) + "x" + baseDisplayH.toFixed(3));
         dbg("Computed target scale width=" + scaleForWidth.toFixed(3) + " height=" + scaleForHeight.toFixed(3) + " chosen=" + scale.toFixed(3));
@@ -584,6 +614,427 @@ function gridMaker_applyToSelectedCustomCell(leftNorm, topNorm, widthNorm, heigh
         dbg("EXCEPTION " + e);
         return _gridMaker_result("ERR", "exception", { message: e }, debugLines);
     }
+}
+
+// Batch endpoint: apply a list of normalized cells to selected clips (track order: bottom -> top).
+function gridMaker_applyBatchToSelectedClips(cellsJson, ratioW, ratioH, marginPx) {
+    var debugLines = [];
+    function dbg(message) {
+        _gridMaker_debugPush(debugLines, message);
+    }
+
+    try {
+        dbg("INPUT batch ratio=" + ratioW + ":" + ratioH + " marginPx=" + marginPx);
+        app.enableQE();
+        dbg("QE enabled");
+
+        var seq = app.project.activeSequence;
+        if (!seq) {
+            dbg("No active sequence");
+            return _gridMaker_result("ERR", "no_active_sequence", null, debugLines);
+        }
+        dbg("Sequence name=" + (seq.name || "<unknown>"));
+
+        ratioW = parseFloat(ratioW);
+        ratioH = parseFloat(ratioH);
+        marginPx = _gridMaker_parseMarginPx(marginPx);
+        if (!(ratioW > 0) || !(ratioH > 0)) {
+            dbg("Invalid ratio");
+            return _gridMaker_result("ERR", "invalid_ratio", null, debugLines);
+        }
+
+        var parsedCells = _gridMaker_jsonParse(String(cellsJson || ""));
+        var cells = _gridMaker_normalizeBatchCells(parsedCells);
+        dbg("Batch cells parsed=" + cells.length);
+        if (cells.length < 1) {
+            dbg("No valid batch cells");
+            return _gridMaker_result("ERR", "invalid_grid", null, debugLines);
+        }
+
+        var selection = seq.getSelection();
+        if (!selection || selection.length < 1) {
+            dbg("No timeline selection");
+            return _gridMaker_result("ERR", "no_selection", null, debugLines);
+        }
+        dbg("Selection length=" + selection.length);
+
+        var selectedVideoClips = [];
+        for (var i = 0; i < selection.length; i++) {
+            if (selection[i] && selection[i].mediaType === "Video") {
+                selectedVideoClips.push(selection[i]);
+            }
+        }
+        if (selectedVideoClips.length < 1) {
+            dbg("No selected video clip found in selection");
+            return _gridMaker_result("ERR", "no_video_selected", null, debugLines);
+        }
+
+        var orderedClips = _gridMaker_sortClipsBottomToTop(seq, selectedVideoClips);
+        dbg("Batch selected video clips=" + orderedClips.length);
+        for (var ci = 0; ci < orderedClips.length; ci++) {
+            var oc = orderedClips[ci];
+            dbg("Batch order #" + (ci + 1) + " track=" + oc.trackIndex + " clip=" + _gridMaker_clipName(oc.clip) + " start=" + _gridMaker_timeToSeconds(oc.clip.start));
+        }
+
+        var processCount = Math.min(orderedClips.length, cells.length);
+        var applied = 0;
+        var failed = 0;
+        var firstError = "";
+        var firstErrorClip = "";
+
+        for (var bi = 0; bi < processCount; bi++) {
+            var batchClip = orderedClips[bi].clip;
+            var batchCell = cells[bi];
+            dbg("Batch apply #" + (bi + 1) + " clip=" + _gridMaker_clipName(batchClip) + " cell=" + batchCell.label);
+
+            var perClip = _gridMaker_applyNormalizedCellToClip(
+                batchClip,
+                seq,
+                batchCell.leftNorm,
+                batchCell.topNorm,
+                batchCell.widthNorm,
+                batchCell.heightNorm,
+                ratioW,
+                ratioH,
+                marginPx,
+                debugLines
+            );
+
+            if (perClip.ok) {
+                applied += 1;
+                continue;
+            }
+
+            failed += 1;
+            dbg("Batch clip failed code=" + perClip.code + " clip=" + _gridMaker_clipName(batchClip));
+            if (!firstError) {
+                firstError = perClip.code || "batch_apply_failed";
+                firstErrorClip = _gridMaker_clipName(batchClip);
+            }
+        }
+
+        var skipped = orderedClips.length - processCount;
+        dbg("Batch summary applied=" + applied + " failed=" + failed + " skipped=" + skipped + " selected=" + orderedClips.length + " cells=" + cells.length);
+
+        if (applied < 1) {
+            return _gridMaker_result("ERR", firstError || "batch_apply_failed", {
+                applied: applied,
+                failed: failed,
+                skipped: skipped,
+                total: orderedClips.length,
+                firstErrorClip: firstErrorClip
+            }, debugLines);
+        }
+
+        return _gridMaker_result("OK", "batch_applied", {
+            applied: applied,
+            failed: failed,
+            skipped: skipped,
+            total: orderedClips.length
+        }, debugLines);
+    } catch (e) {
+        dbg("EXCEPTION " + e);
+        return _gridMaker_result("ERR", "exception", { message: e }, debugLines);
+    }
+}
+
+// Normalize UI batch cells payload to safe 0..1 rectangles.
+function _gridMaker_normalizeBatchCells(rawCells) {
+    var out = [];
+    if (!(rawCells instanceof Array)) {
+        return out;
+    }
+
+    for (var i = 0; i < rawCells.length; i++) {
+        var raw = rawCells[i];
+        if (!raw) {
+            continue;
+        }
+
+        var leftNorm = _gridMaker_toNumber(raw.leftNorm);
+        var topNorm = _gridMaker_toNumber(raw.topNorm);
+        var widthNorm = _gridMaker_toNumber(raw.widthNorm);
+        var heightNorm = _gridMaker_toNumber(raw.heightNorm);
+        if (!_gridMaker_isFiniteNumber(leftNorm) || !_gridMaker_isFiniteNumber(topNorm) || !_gridMaker_isFiniteNumber(widthNorm) || !_gridMaker_isFiniteNumber(heightNorm)) {
+            continue;
+        }
+        if (!(widthNorm > 0) || !(heightNorm > 0)) {
+            continue;
+        }
+        if (leftNorm < 0 || topNorm < 0 || leftNorm + widthNorm > 1.000001 || topNorm + heightNorm > 1.000001) {
+            continue;
+        }
+
+        out.push({
+            leftNorm: leftNorm,
+            topNorm: topNorm,
+            widthNorm: widthNorm,
+            heightNorm: heightNorm,
+            label: String(raw.label || ("cell_" + i))
+        });
+    }
+    return out;
+}
+
+// Sort clips by V track index ascending (V1, V2, V3...) and by timeline start.
+function _gridMaker_sortClipsBottomToTop(seq, clips) {
+    var entries = [];
+    for (var i = 0; i < clips.length; i++) {
+        var clip = clips[i];
+        entries.push({
+            clip: clip,
+            trackIndex: _gridMaker_findTrackIndex(seq, clip),
+            start: _gridMaker_timeToSeconds(clip.start),
+            end: _gridMaker_timeToSeconds(clip.end),
+            name: _gridMaker_clipName(clip)
+        });
+    }
+
+    entries.sort(function (a, b) {
+        var at = (a.trackIndex >= 0) ? a.trackIndex : 99999;
+        var bt = (b.trackIndex >= 0) ? b.trackIndex : 99999;
+        if (at !== bt) {
+            return at - bt;
+        }
+        if (a.start !== b.start) {
+            return a.start - b.start;
+        }
+        if (a.end !== b.end) {
+            return a.end - b.end;
+        }
+        if (a.name > b.name) {
+            return 1;
+        }
+        if (a.name < b.name) {
+            return -1;
+        }
+        return 0;
+    });
+
+    return entries;
+}
+
+// Shared clip placement for batch mode (same placement rules as single custom cells).
+function _gridMaker_applyNormalizedCellToClip(clip, seq, leftNorm, topNorm, widthNorm, heightNorm, ratioW, ratioH, marginPx, debugLines) {
+    var qSeq = null;
+    var qClip = null;
+
+    try {
+        qSeq = qe.project.getActiveSequence();
+    } catch (eQeSeq) {
+        qSeq = null;
+        _gridMaker_debugPush(debugLines, "QE sequence lookup exception=" + eQeSeq);
+    }
+    if (qSeq) {
+        _gridMaker_debugPush(debugLines, "QE sequence acquired");
+        qClip = _gridMaker_findQEClip(qSeq, seq, clip);
+        if (qClip) {
+            _gridMaker_debugPush(debugLines, "QE clip found");
+        } else {
+            _gridMaker_debugPush(debugLines, "QE clip not found (non-blocking unless effect ensure is required)");
+        }
+    } else {
+        _gridMaker_debugPush(debugLines, "QE sequence unavailable (non-blocking unless effect ensure is required)");
+    }
+
+    var transformComp = _gridMaker_findManagedTransformComponent(clip);
+    var motionComp = _gridMaker_findMotionComponent(clip);
+    var placementComp = motionComp;
+    var cropComp = _gridMaker_findManagedCropComponent(clip);
+    _gridMaker_debugPush(debugLines, "Components pre-check placement=" + _gridMaker_componentLabel(placementComp) + " transform=" + _gridMaker_componentLabel(transformComp) + " motion=" + _gridMaker_componentLabel(motionComp) + " crop=" + _gridMaker_componentLabel(cropComp));
+    _gridMaker_dumpPlacementComponents(clip, debugLines, "BEFORE");
+
+    if (!transformComp) {
+        if (!qSeq) {
+            _gridMaker_debugPush(debugLines, "QE sequence unavailable (transform required)");
+            return { ok: false, code: "qe_unavailable" };
+        }
+        if (!qClip) {
+            _gridMaker_debugPush(debugLines, "QE clip not found (transform required)");
+            return { ok: false, code: "qe_clip_not_found" };
+        }
+        transformComp = _gridMaker_ensureManagedEffect(
+            clip,
+            qClip,
+            "transform",
+            _gridMaker_transformEffectLookupNames(),
+            debugLines
+        );
+        _gridMaker_debugPush(debugLines, "Transform component after ensure=" + _gridMaker_componentLabel(transformComp));
+    }
+
+    if (!cropComp || !placementComp) {
+        if (!qSeq) {
+            _gridMaker_debugPush(debugLines, "QE sequence unavailable");
+            return { ok: false, code: "qe_unavailable" };
+        }
+        if (!qClip) {
+            _gridMaker_debugPush(debugLines, "QE clip not found");
+            return { ok: false, code: "qe_clip_not_found" };
+        }
+
+        if (!cropComp) {
+            cropComp = _gridMaker_ensureManagedEffect(
+                clip,
+                qClip,
+                "crop",
+                _gridMaker_cropEffectLookupNames(),
+                debugLines
+            );
+            _gridMaker_debugPush(debugLines, "Crop component after ensure=" + _gridMaker_componentLabel(cropComp));
+        }
+
+        motionComp = _gridMaker_findMotionComponent(clip);
+        placementComp = motionComp;
+        _gridMaker_debugPush(debugLines, "Placement component after ensure=" + _gridMaker_componentLabel(placementComp));
+    }
+
+    if (!placementComp) {
+        _gridMaker_debugPush(debugLines, "Motion component unavailable");
+        return { ok: false, code: "motion_effect_unavailable" };
+    }
+    if (!transformComp) {
+        _gridMaker_debugPush(debugLines, "Transform effect unavailable (required)");
+        return { ok: false, code: "transform_effect_unavailable" };
+    }
+    _gridMaker_enableTransformUniformScale(transformComp, debugLines);
+    _gridMaker_debugPush(debugLines, "Transform strategy: required and kept as neutral effect (no parameter writes)");
+    _gridMaker_debugPush(debugLines, "Placement strategy: Motion only");
+
+    var frameSize = _gridMaker_getSequenceFrameSize(seq, qSeq);
+    if (!frameSize || !_gridMaker_isFiniteNumber(frameSize.width) || !_gridMaker_isFiniteNumber(frameSize.height) || !(frameSize.width > 0) || !(frameSize.height > 0)) {
+        _gridMaker_debugPush(debugLines, "Invalid sequence frame size");
+        return { ok: false, code: "invalid_sequence_size" };
+    }
+    var frameW = frameSize.width;
+    var frameH = frameSize.height;
+    var frameAspect = frameW / frameH;
+    var cellRect = _gridMaker_computePaddedCellRect(frameW, frameH, leftNorm, topNorm, widthNorm, heightNorm, marginPx, debugLines);
+    if (!cellRect) {
+        _gridMaker_debugPush(debugLines, "Invalid effective custom cell size after margin");
+        return { ok: false, code: "invalid_grid" };
+    }
+    var cellW = cellRect.width;
+    var cellH = cellRect.height;
+    var cellAspect = cellW / cellH;
+    var preferHeightAxis = cellAspect <= 1.0;
+    _gridMaker_debugPush(debugLines, "Frame size " + frameW + "x" + frameH + " aspect=" + frameAspect + " marginPx=" + marginPx);
+    _gridMaker_debugPush(debugLines, "Custom cell size " + cellW.toFixed(3) + "x" + cellH.toFixed(3) + " aspect=" + cellAspect.toFixed(6) + " preferHeightAxis=" + preferHeightAxis + " center=[" + cellRect.centerX.toFixed(3) + "," + cellRect.centerY.toFixed(3) + "]");
+
+    var cropL = 0.0;
+    var cropR = 0.0;
+    var cropT = 0.0;
+    var cropB = 0.0;
+
+    var nativeSize = _gridMaker_getClipNativeFrameSize(clip, qClip, debugLines);
+    var sourceW = frameW;
+    var sourceH = frameH;
+    if (nativeSize && _gridMaker_isReasonableFrameSize(nativeSize.width, nativeSize.height)) {
+        sourceW = nativeSize.width;
+        sourceH = nativeSize.height;
+    }
+
+    var placementKind = _gridMaker_componentKind(placementComp);
+    var currentPlacementPos = _gridMaker_getCurrentPosition(placementComp);
+    var placementModeHint = _gridMaker_detectPositionMode(placementKind, currentPlacementPos, frameW, frameH);
+
+    var intrinsicScaleFactor = 1.0;
+    var assumeFrameFit = false;
+    if (!_gridMaker_isFiniteNumber(intrinsicScaleFactor) || !(intrinsicScaleFactor > 0)) {
+        intrinsicScaleFactor = 1.0;
+        assumeFrameFit = false;
+    }
+
+    var baseDisplayW = sourceW * intrinsicScaleFactor;
+    var baseDisplayH = sourceH * intrinsicScaleFactor;
+    if (!(baseDisplayW > 0) || !(baseDisplayH > 0)) {
+        baseDisplayW = frameW;
+        baseDisplayH = frameH;
+    }
+
+    var scaleForWidth = 100.0 * (cellW / baseDisplayW);
+    var scaleForHeight = 100.0 * (cellH / baseDisplayH);
+    var scale = preferHeightAxis ? scaleForHeight : scaleForWidth;
+
+    if (preferHeightAxis) {
+        var prefScaledW = baseDisplayW * (scale / 100.0);
+        if (prefScaledW + 0.0001 < cellW) {
+            scale = scaleForWidth;
+            _gridMaker_debugPush(debugLines, "Scale fallback to width to ensure full cell fill");
+        }
+    } else {
+        var prefScaledH = baseDisplayH * (scale / 100.0);
+        if (prefScaledH + 0.0001 < cellH) {
+            scale = scaleForHeight;
+            _gridMaker_debugPush(debugLines, "Scale fallback to height to ensure full cell fill");
+        }
+    }
+
+    if (!_gridMaker_isFiniteNumber(scale) || !(scale > 0)) {
+        scale = 100.0;
+        _gridMaker_debugPush(debugLines, "Scale fallback to 100 due to invalid computed scale");
+    }
+
+    var scaledW = baseDisplayW * (scale / 100.0);
+    var scaledH = baseDisplayH * (scale / 100.0);
+
+    var visX = cellW / scaledW;
+    var visY = cellH / scaledH;
+    if (!_gridMaker_isFiniteNumber(visX) || !(visX > 0)) {
+        visX = 1.0;
+    }
+    if (!_gridMaker_isFiniteNumber(visY) || !(visY > 0)) {
+        visY = 1.0;
+    }
+    if (visX > 1.0) {
+        visX = 1.0;
+    }
+    if (visY > 1.0) {
+        visY = 1.0;
+    }
+
+    cropL = (1.0 - visX) * 0.5;
+    cropR = cropL;
+    cropT = (1.0 - visY) * 0.5;
+    cropB = cropT;
+
+    cropL = _gridMaker_clamp(cropL * 100.0, 0, 49.5);
+    cropR = _gridMaker_clamp(cropR * 100.0, 0, 49.5);
+    cropT = _gridMaker_clamp(cropT * 100.0, 0, 49.5);
+    cropB = _gridMaker_clamp(cropB * 100.0, 0, 49.5);
+
+    visX = 1.0 - (cropL + cropR) / 100.0;
+    visY = 1.0 - (cropT + cropB) / 100.0;
+
+    var x = cellRect.centerX;
+    var y = cellRect.centerY;
+    _gridMaker_debugPush(debugLines, "Computed placement mode kind=" + placementKind + " modeHint=" + placementModeHint + " assumeFrameFit=" + assumeFrameFit + " intrinsicScaleFactor=" + intrinsicScaleFactor.toFixed(6));
+    _gridMaker_debugPush(debugLines, "Computed source size " + sourceW.toFixed(3) + "x" + sourceH.toFixed(3) + " baseDisplayAt100=" + baseDisplayW.toFixed(3) + "x" + baseDisplayH.toFixed(3));
+    _gridMaker_debugPush(debugLines, "Computed target scale width=" + scaleForWidth.toFixed(3) + " height=" + scaleForHeight.toFixed(3) + " chosen=" + scale.toFixed(3));
+    _gridMaker_debugPush(debugLines, "Computed scaled size " + scaledW.toFixed(3) + "x" + scaledH.toFixed(3) + " targetCell=" + cellW.toFixed(3) + "x" + cellH.toFixed(3));
+    _gridMaker_debugPush(debugLines, "Computed crop LRTB=" + cropL.toFixed(3) + "," + cropR.toFixed(3) + "," + cropT.toFixed(3) + "," + cropB.toFixed(3) + " visX=" + visX.toFixed(6) + " visY=" + visY.toFixed(6));
+    _gridMaker_debugPush(debugLines, "Computed position x=" + x.toFixed(3) + " y=" + y.toFixed(3));
+
+    if (!_gridMaker_setPlacement(placementComp, scale, x, y, frameW, frameH, debugLines)) {
+        _gridMaker_debugPush(debugLines, "Placement write failed");
+        return { ok: false, code: "placement_apply_failed" };
+    }
+    var cropRequired = (cropL > 0.0001 || cropR > 0.0001 || cropT > 0.0001 || cropB > 0.0001);
+    if (cropComp) {
+        _gridMaker_setCrop(cropComp, cropL, cropR, cropT, cropB);
+    } else if (cropRequired) {
+        _gridMaker_debugPush(debugLines, "Crop component unavailable and crop required");
+        return { ok: false, code: "crop_effect_unavailable" };
+    } else {
+        _gridMaker_debugPush(debugLines, "Crop component unavailable but crop not required; skipping crop write");
+    }
+
+    _gridMaker_debugPush(debugLines, "Placement write succeeded");
+    _gridMaker_debugPush(debugLines, "Readback scale=" + _gridMaker_getCurrentScalePercent(placementComp));
+    _gridMaker_debugPush(debugLines, "Readback position=" + _gridMaker_pointToString(_gridMaker_getCurrentPosition(placementComp)));
+    _gridMaker_dumpPlacementComponents(clip, debugLines, "AFTER");
+
+    return { ok: true, scale: scale.toFixed(2) };
 }
 
 // QE clip targeting helpers: find the timeline item that best matches selection.
@@ -2460,6 +2911,86 @@ function _gridMaker_toNumber(value) {
     return NaN;
 }
 
+// Parse and clamp global margin (in sequence pixels) from UI payload.
+function _gridMaker_parseMarginPx(rawMargin) {
+    var margin = _gridMaker_toNumber(rawMargin);
+    if (!_gridMaker_isFiniteNumber(margin) || margin < 0) {
+        return 0;
+    }
+    if (margin > 10000) {
+        margin = 10000;
+    }
+    return margin;
+}
+
+// Compute final cell rectangle with a single slider controlling outer margin + inter-cell gap.
+function _gridMaker_computePaddedCellRect(frameW, frameH, leftNorm, topNorm, widthNorm, heightNorm, marginPx, debugLines) {
+    if (!(frameW > 0) || !(frameH > 0)) {
+        return null;
+    }
+    if (!_gridMaker_isFiniteNumber(leftNorm) || !_gridMaker_isFiniteNumber(topNorm) || !_gridMaker_isFiniteNumber(widthNorm) || !_gridMaker_isFiniteNumber(heightNorm)) {
+        return null;
+    }
+    if (!(widthNorm > 0) || !(heightNorm > 0)) {
+        return null;
+    }
+    if (leftNorm < 0 || topNorm < 0 || leftNorm + widthNorm > 1.000001 || topNorm + heightNorm > 1.000001) {
+        return null;
+    }
+
+    var safeMargin = _gridMaker_parseMarginPx(marginPx);
+    var halfMargin = safeMargin * 0.5;
+    var maxHalfMargin = Math.min(frameW, frameH) * 0.49;
+    if (halfMargin > maxHalfMargin) {
+        halfMargin = maxHalfMargin;
+    }
+
+    var contentLeft = halfMargin;
+    var contentTop = halfMargin;
+    var contentW = frameW - (halfMargin * 2.0);
+    var contentH = frameH - (halfMargin * 2.0);
+    if (!(contentW > 1) || !(contentH > 1)) {
+        contentLeft = 0;
+        contentTop = 0;
+        contentW = frameW;
+        contentH = frameH;
+        halfMargin = 0;
+    }
+
+    var cellLeft = contentLeft + (contentW * leftNorm);
+    var cellTop = contentTop + (contentH * topNorm);
+    var cellW = contentW * widthNorm;
+    var cellH = contentH * heightNorm;
+
+    var localInset = halfMargin;
+    var maxInset = Math.min(cellW, cellH) * 0.49;
+    if (localInset > maxInset) {
+        localInset = maxInset;
+    }
+    if (!(localInset >= 0)) {
+        localInset = 0;
+    }
+
+    cellLeft += localInset;
+    cellTop += localInset;
+    cellW -= localInset * 2.0;
+    cellH -= localInset * 2.0;
+
+    if (!(cellW > 1) || !(cellH > 1)) {
+        _gridMaker_debugPush(debugLines, "Margin collapsed cell dimensions (cellW=" + cellW + " cellH=" + cellH + ")");
+        return null;
+    }
+
+    return {
+        left: cellLeft,
+        top: cellTop,
+        width: cellW,
+        height: cellH,
+        centerX: cellLeft + (cellW * 0.5),
+        centerY: cellTop + (cellH * 0.5)
+    };
+}
+
 function _gridMaker_isReasonableFrameSize(width, height) {
     if (!_gridMaker_isFiniteNumber(width) || !_gridMaker_isFiniteNumber(height)) {
         return false;
@@ -2857,6 +3388,143 @@ function gridMaker_designerDeleteConfig(configId) {
         }
         return _gridMaker_jsonStringify({ ok: true, removed: removed });
     } catch (e) {
+        return _gridMaker_jsonStringify({ ok: false, message: String(e) });
+    }
+}
+
+// Export all saved designer configs to a JSON file for backup/sharing.
+function gridMaker_designerExportConfigs() {
+    try {
+        var store = _gridMaker_designerReadStore();
+        var exportPayload = {
+            exportedAt: (new Date()).toISOString ? (new Date()).toISOString() : String(new Date().getTime()),
+            source: "PremiereGridMaker",
+            version: "1.2.0",
+            configs: (store && store.configs instanceof Array) ? store.configs : []
+        };
+
+        var defaultFileName = "PremiereGridMaker-designer-configs.json";
+        var target = File.saveDialog("Export Grid Maker designer configs", "*.json");
+        if (!target) {
+            return _gridMaker_jsonStringify({ ok: false, cancelled: true });
+        }
+
+        if (!(target instanceof File)) {
+            target = new File(String(target || ""));
+        }
+        if (!target.name || target.name.indexOf(".json") === -1) {
+            target = new File(target.fsName + ".json");
+        }
+
+        target.encoding = "UTF-8";
+        target.open("w");
+        target.write(_gridMaker_jsonStringify(exportPayload));
+        target.close();
+
+        return _gridMaker_jsonStringify({
+            ok: true,
+            count: exportPayload.configs.length,
+            path: target.fsName || target.fullName || defaultFileName
+        });
+    } catch (e) {
+        try { if (target) { target.close(); } } catch (e2) {}
+        return _gridMaker_jsonStringify({ ok: false, message: String(e) });
+    }
+}
+
+// Import designer configs from JSON and merge them into local storage by config id.
+function gridMaker_designerImportConfigs() {
+    try {
+        var source = File.openDialog("Import Grid Maker designer configs", "*.json");
+        if (!source) {
+            return _gridMaker_jsonStringify({ ok: false, cancelled: true });
+        }
+
+        source.encoding = "UTF-8";
+        source.open("r");
+        var raw = source.read();
+        source.close();
+
+        var parsed = _gridMaker_jsonParse(raw);
+        if (!parsed) {
+            return _gridMaker_jsonStringify({ ok: false, message: "invalid_json" });
+        }
+
+        var rawConfigs = null;
+        if (parsed instanceof Array) {
+            rawConfigs = parsed;
+        } else if (parsed.configs instanceof Array) {
+            rawConfigs = parsed.configs;
+        }
+        if (!(rawConfigs instanceof Array)) {
+            return _gridMaker_jsonStringify({ ok: false, message: "invalid_payload" });
+        }
+
+        var now = (new Date()).toISOString ? (new Date()).toISOString() : String(new Date().getTime());
+        var normalized = [];
+        for (var i = 0; i < rawConfigs.length; i++) {
+            var cfg = rawConfigs[i] || {};
+            var ratioW = _gridMaker_toNumber(cfg.ratioW);
+            var ratioH = _gridMaker_toNumber(cfg.ratioH);
+            if (!_gridMaker_isFiniteNumber(ratioW) || !_gridMaker_isFiniteNumber(ratioH) || !(ratioW > 0) || !(ratioH > 0)) {
+                continue;
+            }
+            var blocks = _gridMaker_designerNormalizeBlocks(cfg.blocks);
+            if (blocks.length < 1) {
+                continue;
+            }
+
+            normalized.push({
+                id: _gridMaker_designerSanitizeId(cfg.id || ("cfg_" + now + "_" + i)),
+                name: String(cfg.name || ("Config " + (i + 1))),
+                ratioW: ratioW,
+                ratioH: ratioH,
+                ratioKey: _gridMaker_designerRatioKey(ratioW, ratioH),
+                blocks: blocks,
+                createdAt: String(cfg.createdAt || now),
+                updatedAt: now
+            });
+        }
+
+        if (normalized.length < 1) {
+            return _gridMaker_jsonStringify({ ok: false, message: "no_valid_configs" });
+        }
+
+        var store = _gridMaker_designerReadStore();
+        var nextById = {};
+        var si;
+        for (si = 0; si < store.configs.length; si++) {
+            var existing = store.configs[si];
+            if (!existing || !existing.id) {
+                continue;
+            }
+            nextById[String(existing.id)] = existing;
+        }
+        for (si = 0; si < normalized.length; si++) {
+            var incoming = normalized[si];
+            var previous = nextById[incoming.id];
+            if (previous && previous.createdAt) {
+                incoming.createdAt = previous.createdAt;
+            }
+            nextById[incoming.id] = incoming;
+        }
+
+        var merged = [];
+        for (var id in nextById) {
+            if (!nextById.hasOwnProperty(id)) {
+                continue;
+            }
+            merged.push(nextById[id]);
+        }
+        store.configs = merged;
+
+        if (!_gridMaker_designerWriteStore(store)) {
+            return _gridMaker_jsonStringify({ ok: false, message: "write_failed" });
+        }
+
+        return _gridMaker_jsonStringify({ ok: true, count: normalized.length });
+    } catch (e) {
+        try { if (source) { source.close(); } } catch (e2) {}
         return _gridMaker_jsonStringify({ ok: false, message: String(e) });
     }
 }

@@ -20,6 +20,7 @@
     cols: 2,
     ratioW: 16,
     ratioH: 9,
+    marginPx: resolveInitialMarginPx(),
     selectedCell: { row: 0, col: 0 },
     locale: resolveInitialLocale(),
     designer: {
@@ -62,6 +63,7 @@
   var colsRange = document.getElementById("cols");
   var colsNumber = document.getElementById("colsNumber");
   var ratio = document.getElementById("ratio");
+  var marginRange = document.getElementById("marginRange");
   var summary = document.getElementById("summary");
   var gridStage = document.getElementById("gridStage");
   var grid = document.getElementById("gridPreview");
@@ -84,11 +86,14 @@
   var designerRemoveBtn = document.getElementById("designerRemoveBtn");
   var designerNewBtn = document.getElementById("designerNewBtn");
   var designerSaveBtn = document.getElementById("designerSaveBtn");
+  var designerImportBtn = document.getElementById("designerImportBtn");
+  var designerExportBtn = document.getElementById("designerExportBtn");
   var designerNameInput = document.getElementById("designerNameInput");
   var designerGalleryPanel = document.getElementById("designerGalleryPanel");
   var designerGallery = document.getElementById("designerGallery");
   var designerGallerySize = document.getElementById("designerGallerySize");
   var designerGalleryTools = document.getElementById("designerGalleryTools");
+  var applyBatchBtn = document.getElementById("applyBatchBtn");
 
   var designerDrag = null;
 
@@ -166,9 +171,32 @@
     return clampInt(parsed, DESIGNER_GALLERY_MIN, DESIGNER_GALLERY_MAX, fallback);
   }
 
+  // Load the global margin (in sequence pixels) used for classic/designer placement.
+  function resolveInitialMarginPx() {
+    var fallback = 0;
+    var stored = null;
+
+    try {
+      stored = window.localStorage.getItem("pgm.marginPx");
+    } catch (e1) {
+      stored = null;
+    }
+
+    var parsed = parseInt(stored, 10);
+    if (isNaN(parsed)) {
+      return fallback;
+    }
+    return clampInt(parsed, 0, 200, fallback);
+  }
+
   function getLocaleStrings() {
     var locale = i18n.locales[state.locale] || i18n.locales[i18n.defaultLocale];
     return locale ? locale.strings : {};
+  }
+
+  function getDefaultLocaleStrings() {
+    var fallback = i18n.locales[i18n.defaultLocale];
+    return fallback ? fallback.strings : {};
   }
 
   function format(template, vars) {
@@ -180,12 +208,20 @@
 
   function hasText(key) {
     var strings = getLocaleStrings();
-    return strings[key] !== undefined;
+    if (strings[key] !== undefined) {
+      return true;
+    }
+    var fallbackStrings = getDefaultLocaleStrings();
+    return fallbackStrings[key] !== undefined;
   }
 
   function t(key, vars) {
     var strings = getLocaleStrings();
     var template = strings[key];
+    if (template === undefined) {
+      var fallbackStrings = getDefaultLocaleStrings();
+      template = fallbackStrings[key];
+    }
     if (template === undefined) {
       return key;
     }
@@ -519,6 +555,25 @@
     }
     try {
       window.localStorage.setItem("pgm.designer.gallerySize", String(size));
+    } catch (e1) {
+      // Ignore localStorage issues in CEP hosts.
+    }
+  }
+
+  // Persist and normalize the global margin slider value.
+  function applyGlobalMarginPx(nextMargin, persist) {
+    var marginPx = clampInt(nextMargin, 0, 200, 0);
+    state.marginPx = marginPx;
+
+    if (marginRange) {
+      marginRange.value = String(marginPx);
+    }
+
+    if (!persist) {
+      return;
+    }
+    try {
+      window.localStorage.setItem("pgm.marginPx", String(marginPx));
     } catch (e1) {
       // Ignore localStorage issues in CEP hosts.
     }
@@ -903,6 +958,21 @@
             hostDebug: hostDebug
           };
         }
+        if (code === "batch_applied") {
+          return {
+            kind: "ok",
+            key: "status.batch_applied",
+            vars: {
+              applied: details.applied || "0",
+              total: details.total || "0",
+              failed: details.failed || "0",
+              skipped: details.skipped || "0"
+            },
+            code: code,
+            details: details,
+            hostDebug: hostDebug
+          };
+        }
         return { kind: "ok", key: "status.ok.generic", vars: {}, hostDebug: hostDebug, code: code, details: details };
       }
 
@@ -1006,6 +1076,139 @@
     }
   }
 
+  // Build classic grid batch targets in row-major order (top-left to bottom-right).
+  function buildClassicBatchCells() {
+    var cells = [];
+    for (var r = 0; r < state.rows; r += 1) {
+      for (var c = 0; c < state.cols; c += 1) {
+        cells.push({
+          leftNorm: c / state.cols,
+          topNorm: r / state.rows,
+          widthNorm: 1 / state.cols,
+          heightNorm: 1 / state.rows,
+          label: "r" + (r + 1) + "c" + (c + 1)
+        });
+      }
+    }
+    return cells;
+  }
+
+  // Build designer batch targets using visual order: top-to-bottom then left-to-right.
+  function buildDesignerBatchCells() {
+    var blocks = (state.designer.blocks || []).slice();
+    blocks.sort(function (a, b) {
+      if (Math.abs(a.y - b.y) > 0.0001) {
+        return a.y - b.y;
+      }
+      if (Math.abs(a.x - b.x) > 0.0001) {
+        return a.x - b.x;
+      }
+      return String(a.id || "").localeCompare(String(b.id || ""));
+    });
+
+    var cells = [];
+    for (var i = 0; i < blocks.length; i += 1) {
+      var block = blocks[i];
+      cells.push({
+        leftNorm: block.x / DESIGNER_GRID_SIZE,
+        topNorm: block.y / DESIGNER_GRID_SIZE,
+        widthNorm: block.w / DESIGNER_GRID_SIZE,
+        heightNorm: block.h / DESIGNER_GRID_SIZE,
+        label: String(block.id || ("block_" + i))
+      });
+    }
+    return cells;
+  }
+
+  // Resolve the current mode targets for batch placement.
+  function buildBatchCells() {
+    if (state.designer.enabled) {
+      return buildDesignerBatchCells();
+    }
+    return buildClassicBatchCells();
+  }
+
+  // Batch apply maps selected clips to cells, ordered by track (bottom->top) in hostscript.
+  function applyBatchSelection() {
+    var cells = buildBatchCells();
+    if (!cells.length) {
+      setStatusKey("status.batch_no_cells", {}, "err");
+      return;
+    }
+
+    var script = "gridMaker_applyBatchToSelectedClips(" +
+      quoteForEvalScript(JSON.stringify(cells)) + "," +
+      state.ratioW + "," +
+      state.ratioH + "," +
+      state.marginPx +
+      ")";
+
+    appendDebug("UI> batch click cells=" + cells.length + " ratio=" + getRatioText() + " marginPx=" + state.marginPx);
+    appendDebug("UI> evalScript: gridMaker_applyBatchToSelectedClips(<cells>," + state.ratioW + "," + state.ratioH + "," + state.marginPx + ")");
+    setStatusKey("status.batch_applying", {}, "");
+
+    enqueueApplyRequest({
+      script: script,
+      onSuccess: function (parsed) {
+        var applied = (parsed.details && parsed.details.applied) ? parsed.details.applied : "0";
+        var total = (parsed.details && parsed.details.total) ? parsed.details.total : "0";
+        var failed = (parsed.details && parsed.details.failed) ? parsed.details.failed : "0";
+        var skipped = (parsed.details && parsed.details.skipped) ? parsed.details.skipped : "0";
+        appendDebug("UI> batch applied=" + applied + "/" + total + " failed=" + failed + " skipped=" + skipped);
+      },
+      onDone: function (parsed) {
+        if (parsed.raw) {
+          setStatusRaw(parsed.raw, parsed.kind);
+          return;
+        }
+        setStatusKey(parsed.key, parsed.vars, parsed.kind);
+      }
+    });
+  }
+
+  // Import designer configs from JSON, then refresh gallery for the current ratio.
+  function importDesignerConfigs() {
+    appendDebug("UI> evalScript: gridMaker_designerImportConfigs()");
+    setStatusKey("status.designer_importing", {}, "");
+
+    callHost("gridMaker_designerImportConfigs()", function (result) {
+      appendDebug("HOST< raw(designer-import): " + (result || "<empty>"));
+      var parsed = parseJsonSafe(result);
+      if (!parsed || !parsed.ok) {
+        if (parsed && parsed.cancelled) {
+          setStatusKey("status.designer_io_cancelled", {}, "");
+          return;
+        }
+        setStatusKey("status.designer_import_failed", {}, "err");
+        return;
+      }
+
+      setStatusKey("status.designer_imported", { count: parsed.count || 0 }, "ok");
+      loadDesignerConfigs(state.designer.activeConfigId, true);
+    });
+  }
+
+  // Export all designer configs to a JSON file for backup/team sharing.
+  function exportDesignerConfigs() {
+    appendDebug("UI> evalScript: gridMaker_designerExportConfigs()");
+    setStatusKey("status.designer_exporting", {}, "");
+
+    callHost("gridMaker_designerExportConfigs()", function (result) {
+      appendDebug("HOST< raw(designer-export): " + (result || "<empty>"));
+      var parsed = parseJsonSafe(result);
+      if (!parsed || !parsed.ok) {
+        if (parsed && parsed.cancelled) {
+          setStatusKey("status.designer_io_cancelled", {}, "");
+          return;
+        }
+        setStatusKey("status.designer_export_failed", {}, "err");
+        return;
+      }
+
+      setStatusKey("status.designer_exported", { count: parsed.count || 0 }, "ok");
+    });
+  }
+
   // User actions: apply classic cell or designer custom block to timeline selection.
   function applyClassicCell(row, col) {
     state.selectedCell = { row: row, col: col };
@@ -1017,10 +1220,11 @@
       state.rows + "," +
       state.cols + "," +
       state.ratioW + "," +
-      state.ratioH +
+      state.ratioH + "," +
+      state.marginPx +
       ")";
 
-    appendDebug("UI> click cell row=" + (row + 1) + " col=" + (col + 1) + " grid=" + state.rows + "x" + state.cols + " ratio=" + getRatioText());
+    appendDebug("UI> click cell row=" + (row + 1) + " col=" + (col + 1) + " grid=" + state.rows + "x" + state.cols + " ratio=" + getRatioText() + " marginPx=" + state.marginPx);
     appendDebug("UI> evalScript: " + script);
     setStatusKey("status.applying", {}, "");
 
@@ -1066,10 +1270,11 @@
       widthNorm + "," +
       heightNorm + "," +
       state.ratioW + "," +
-      state.ratioH +
+      state.ratioH + "," +
+      state.marginPx +
       ")";
 
-    appendDebug("UI> click designer cell id=" + block.id + " x=" + block.x + " y=" + block.y + " w=" + block.w + " h=" + block.h + " ratio=" + getRatioText());
+    appendDebug("UI> click designer cell id=" + block.id + " x=" + block.x + " y=" + block.y + " w=" + block.w + " h=" + block.h + " ratio=" + getRatioText() + " marginPx=" + state.marginPx);
     appendDebug("UI> evalScript: " + script);
     setStatusKey("status.applying", {}, "");
 
@@ -1878,6 +2083,13 @@
     renderPreview();
   });
 
+  if (marginRange) {
+    marginRange.addEventListener("input", function () {
+      applyGlobalMarginPx(marginRange.value, true);
+      appendDebug("UI> margin changed to " + state.marginPx + "px");
+    });
+  }
+
   window.addEventListener("resize", function () {
     schedulePreviewFit();
   });
@@ -1987,6 +2199,24 @@
     });
   }
 
+  if (designerImportBtn) {
+    designerImportBtn.addEventListener("click", function () {
+      if (!state.designer.enabled) {
+        return;
+      }
+      importDesignerConfigs();
+    });
+  }
+
+  if (designerExportBtn) {
+    designerExportBtn.addEventListener("click", function () {
+      if (!state.designer.enabled) {
+        return;
+      }
+      exportDesignerConfigs();
+    });
+  }
+
   if (designerNameInput) {
     designerNameInput.addEventListener("input", function () {
       updateSummary();
@@ -1997,6 +2227,12 @@
     designerGallerySize.addEventListener("input", function () {
       applyDesignerGallerySize(designerGallerySize.value, true);
       appendDebug("UI> designer gallery size changed to " + designerGallerySize.value);
+    });
+  }
+
+  if (applyBatchBtn) {
+    applyBatchBtn.addEventListener("click", function () {
+      applyBatchSelection();
     });
   }
 
@@ -2069,6 +2305,7 @@
 
   // Initial boot sequence for UI state, i18n, preview and update check.
   applyDesignerGallerySize(state.designer.gallerySize, false);
+  applyGlobalMarginPx(state.marginPx, false);
   if (classicGridControls) {
     classicGridControls.style.display = "";
   }

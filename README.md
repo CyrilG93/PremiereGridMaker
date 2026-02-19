@@ -6,11 +6,14 @@ Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 
 - Grid size with two sliders: rows x columns (1 to 10)
 - Ratio preset selector: `16:9`, `1:1`, `9:16`, `4:5`, `3:2`
+- Global margin slider (px) applied to outer margins and spacing between cells/blocks
 - Clickable live grid preview
 - One-click placement to a target cell using `Transform` + `Crop`
+- Batch apply: map selected timeline clips to cells in one click (ordered by track from bottom to top)
 - No manual position presets required
 - Grid Designer mode (10x10 canvas): irregular layouts with draggable/resizable blocks
 - Designer presets per ratio, saved locally with gallery preview and quick load/delete
+- Designer preset import/export in JSON (team sharing + backup)
 - UI localization: English (default), French, Spanish, German, Portuguese (Brazil), Japanese, Italian, Chinese (Simplified), Russian
 - Language selector with flag dropdown
 - Collapsible debug panel (collapsed by default)
@@ -76,9 +79,26 @@ for v in {8..15}; do defaults write "com.adobe.CSXS.$v" PlayerDebugMode 1; done
 1. Open a sequence.
 2. Select one video clip on timeline.
 3. Set rows, columns, and ratio.
-4. Click a target cell in the preview.
+4. Optional: adjust global margin (px).
+5. Click a target cell in the preview.
 
 The extension adds/uses `Transform` and `Crop`, then positions/scales the selected clip for the target grid cell.
+
+### Batch apply
+
+1. Select multiple video clips in the timeline.
+2. Keep the desired grid/designer layout active.
+3. Click `Apply batch`.
+
+Batch order is deterministic:
+
+- clips are sorted by track from bottom to top (`V1`, then `V2`, etc.),
+- then by timeline start time inside each track.
+
+### Designer import/export
+
+- `Import JSON`: merge configs from a `.json` file into local Designer presets.
+- `Export JSON`: save all local Designer presets into a shareable `.json` file.
 
 ## Premiere Preference Recommendation (Important)
 

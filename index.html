@@ -47,9 +47,14 @@
         <option value="3:2">3:2</option>
       </select>
 
+      <label for="marginRange" data-i18n="label.margin">Global margin (px)</label>
+      <input id="marginRange" type="range" min="0" max="200" step="1" value="0" />
+
       <p class="help" data-i18n="help.cellClick">
         Click a cell below: the selected timeline video clip will be placed automatically.
       </p>
+
+      <button id="applyBatchBtn" type="button" data-i18n="action.applyBatch">Apply batch</button>
 
       <div id="designerControls" class="designer-controls" hidden>
         <div class="designer-actions">
@@ -58,10 +63,14 @@
           <button id="designerAddBtn" type="button" data-i18n="designer.add">Ajouter case</button>
           <button id="designerRemoveBtn" type="button" data-i18n="designer.remove">Supprimer case</button>
         </div>
-        <div class="designer-actions">
+        <div class="designer-actions designer-actions-config">
           <button id="designerNewBtn" type="button" data-i18n="designer.new">Nouvelle config</button>
           <input id="designerNameInput" type="text" maxlength="64" data-i18n-placeholder="designer.name_placeholder" placeholder="Nom de config" />
           <button id="designerSaveBtn" type="button" data-i18n="designer.save">Sauvegarder</button>
+        </div>
+        <div class="designer-actions designer-actions-io">
+          <button id="designerImportBtn" type="button" data-i18n="designer.import">Import JSON</button>
+          <button id="designerExportBtn" type="button" data-i18n="designer.export">Export JSON</button>
         </div>
       </div>
     </section>

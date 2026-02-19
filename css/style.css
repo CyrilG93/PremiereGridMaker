@@ -82,6 +82,7 @@ h1 {
 
 .header-btn,
 #copyDebugBtn,
+#applyBatchBtn,
 .designer-controls button,
 .designer-gallery-item {
   border: 1px solid var(--line);
@@ -100,6 +101,7 @@ h1 {
 
 .header-btn:hover,
 #copyDebugBtn:hover,
+#applyBatchBtn:hover,
 .designer-controls button:hover,
 .designer-gallery-item:hover {
   border-color: var(--accent);
@@ -238,8 +240,12 @@ input[type="range"] {
   gap: 6px;
 }
 
-.designer-actions:last-child {
+.designer-actions-config {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr);
+}
+
+.designer-actions-io {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .grid-header {
@@ -679,7 +685,8 @@ body.designer-dragging .designer-resize-handle {
   }
 
   .designer-actions,
-  .designer-actions:last-child {
+  .designer-actions-config,
+  .designer-actions-io {
     grid-template-columns: 1fr;
   }
 }
