@@ -29,6 +29,8 @@
       "designer.remove": "删除区块",
       "designer.new": "新建配置",
       "designer.save": "保存",
+      "designer.import": "导入配置",
+      "designer.export": "导出配置",
       "designer.configs": "配置",
       "designer.name_placeholder": "配置名称",
       "designer.default_name": "新建配置",

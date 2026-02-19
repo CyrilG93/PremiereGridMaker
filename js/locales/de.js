@@ -29,6 +29,8 @@
       "designer.remove": "Block entfernen",
       "designer.new": "Neue Konfig",
       "designer.save": "Speichern",
+      "designer.import": "Konfiguration importieren",
+      "designer.export": "Konfiguration exportieren",
       "designer.configs": "Konfigs",
       "designer.name_placeholder": "Konfig-Name",
       "designer.default_name": "Neue Konfig",

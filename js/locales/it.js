@@ -29,6 +29,8 @@
       "designer.remove": "Rimuovi blocco",
       "designer.new": "Nuova config",
       "designer.save": "Salva",
+      "designer.import": "Importa configurazione",
+      "designer.export": "Esporta configurazione",
       "designer.configs": "Config",
       "designer.name_placeholder": "Nome config",
       "designer.default_name": "Nuova config",

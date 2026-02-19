@@ -29,6 +29,8 @@
       "designer.remove": "Удалить блок",
       "designer.new": "Новая конфигурация",
       "designer.save": "Сохранить",
+      "designer.import": "Импорт конфигурации",
+      "designer.export": "Экспорт конфигурации",
       "designer.configs": "Конфигурации",
       "designer.name_placeholder": "Имя конфигурации",
       "designer.default_name": "Новая конфигурация",

@@ -29,6 +29,8 @@
       "designer.remove": "ブロック削除",
       "designer.new": "新規設定",
       "designer.save": "保存",
+      "designer.import": "設定をインポート",
+      "designer.export": "設定をエクスポート",
       "designer.configs": "設定",
       "designer.name_placeholder": "設定名",
       "designer.default_name": "新規設定",
