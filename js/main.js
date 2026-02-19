@@ -14,6 +14,7 @@
   var DESIGNER_GALLERY_MAX = 140;
   var DESIGNER_GALLERY_DEFAULT = 64;
 
+  // Central runtime state for UI controls, active ratio, locale and designer mode.
   var state = {
     rows: 2,
     cols: 2,
@@ -55,6 +56,7 @@
   var APPLY_RETRY_DELAY_MS = 450;
   var APPLY_MAX_RETRIES = 0;
 
+  // Cache DOM references once to keep rendering and event handlers simple.
   var rowsRange = document.getElementById("rows");
   var rowsNumber = document.getElementById("rowsNumber");
   var colsRange = document.getElementById("cols");
@@ -90,6 +92,7 @@
 
   var designerDrag = null;
 
+  // Debug helpers: timestamped logs in the collapsible debug panel.
   function getClockStamp() {
     var now = new Date();
     var hh = String(now.getHours()).padStart(2, "0");
@@ -121,6 +124,7 @@
     }
   }
 
+  // Locale and i18n bootstrapping from localStorage + dictionary registry.
   function resolveInitialLocale() {
     var fallback = i18n.defaultLocale || "en";
     var stored = null;
@@ -226,6 +230,7 @@
     setStatusText(statusState.vars.message || "", statusState.kind);
   }
 
+  // Release/update helpers (version compare + safe download URL filtering).
   function normalizeVersion(raw) {
     var clean = String(raw || "").trim().replace(/^v/i, "");
     var match = clean.match(/^(\d+)\.(\d+)\.(\d+)/);
@@ -422,6 +427,7 @@
     return false;
   }
 
+  // Generic numeric/string helpers shared by grid + designer flows.
   function parseRatio(value) {
     var parts = value.split(":");
     if (parts.length !== 2) {
@@ -551,6 +557,7 @@
     return rounded.toFixed(1) + "%";
   }
 
+  // Designer block normalization and geometry validation helpers.
   function normalizeDesignerBlock(raw, fallbackId) {
     if (!raw) {
       return null;
@@ -741,6 +748,7 @@
     state.designer.blocks.push(moved);
   }
 
+  // Preview sizing helpers keep the visual grid fitted to available panel space.
   function updateSummary() {
     var ratioText = getRatioText();
     if (state.designer.enabled) {
@@ -817,6 +825,7 @@
     window.setTimeout(fitGridPreview, 0);
   }
 
+  // CEP/CSInterface host bridge + parser for hostscript responses.
   function callHost(fnCall, onDone) {
     if (csInterface) {
       csInterface.evalScript(fnCall, function (result) {
@@ -927,6 +936,7 @@
     return { kind: "", raw: result, hostDebug: "", code: "" };
   }
 
+  // Apply queue ensures only one host placement request runs at a time.
   function isRetryableApplyError(code) {
     return code === "transform_effect_unavailable" || code === "crop_effect_unavailable";
   }
@@ -996,6 +1006,7 @@
     }
   }
 
+  // User actions: apply classic cell or designer custom block to timeline selection.
   function applyClassicCell(row, col) {
     state.selectedCell = { row: row, col: col };
     renderPreview();
@@ -1079,6 +1090,7 @@
     });
   }
 
+  // Drag/resize interactions used in Designer edit mode.
   function startDesignerDrag(event, blockId, action) {
     if (!state.designer.enabled || !state.designer.editMode) {
       return;
@@ -1191,6 +1203,7 @@
     }
   }
 
+  // Render pipeline for classic grid, designer grid and shared panel state.
   function renderClassicGrid() {
     grid.classList.remove("designer-mode");
     grid.innerHTML = "";
@@ -1457,6 +1470,7 @@
     }
   }
 
+  // Designer config CRUD (load/save/delete) persisted by hostscript per ratio.
   function setDesignerMode(enabled) {
     var next = !!enabled;
     if (state.designer.enabled === next) {
@@ -1773,6 +1787,7 @@
     renderPreview();
   }
 
+  // Static text and language selector rendering.
   function renderStaticTexts() {
     var nodes = document.querySelectorAll("[data-i18n]");
     for (var i = 0; i < nodes.length; i += 1) {
@@ -1835,6 +1850,7 @@
     refreshUpdateBanner();
   }
 
+  // Event wiring: input sync, panel toggles, designer commands and clipboard copy.
   syncValue(rowsRange, rowsNumber, function (v) {
     state.rows = v;
     if (state.selectedCell.row >= v) {
@@ -2051,6 +2067,7 @@
     });
   }
 
+  // Initial boot sequence for UI state, i18n, preview and update check.
   applyDesignerGallerySize(state.designer.gallerySize, false);
   if (classicGridControls) {
     classicGridControls.style.display = "";

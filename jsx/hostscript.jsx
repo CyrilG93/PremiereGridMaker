@@ -1,3 +1,4 @@
+// Main entry for classic grid placement (row/col in an N x M layout).
 function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
     var debugLines = [];
     function dbg(message) {
@@ -290,6 +291,7 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH) {
     }
 }
 
+// Main entry for designer placement using normalized bounds (0..1).
 function gridMaker_applyToSelectedCustomCell(leftNorm, topNorm, widthNorm, heightNorm, ratioW, ratioH) {
     var debugLines = [];
     function dbg(message) {
@@ -584,6 +586,7 @@ function gridMaker_applyToSelectedCustomCell(leftNorm, topNorm, widthNorm, heigh
     }
 }
 
+// QE clip targeting helpers: find the timeline item that best matches selection.
 function _gridMaker_findQEClip(qSeq, seq, clip) {
     var targetStart = _gridMaker_timeToSeconds(clip.start);
     var targetEnd = _gridMaker_timeToSeconds(clip.end);
@@ -876,6 +879,7 @@ function _gridMaker_timeToSeconds(timeLike) {
     return NaN;
 }
 
+// Effect ensure helpers: locate/add Transform & Crop without creating duplicates.
 function _gridMaker_ensureEffect(clip, qClip, lookupNames, resolverFn) {
     var comp = resolverFn(clip);
     if (comp) {
@@ -1473,6 +1477,7 @@ function _gridMaker_pickNewComponent(beforeList, afterList) {
     return afterList[afterList.length - 1];
 }
 
+// Tagged effect strategy keeps a stable component identity across localized hosts.
 function _gridMaker_ensureTaggedEffect(clip, qClip, type, lookupNames, findAnyFn, findTaggedFn, debugLines) {
     var tagged = findTaggedFn(clip);
     if (tagged) {
@@ -1688,6 +1693,7 @@ function _gridMaker_transformUniformLinkIsEffective(uniformProp, widthProp, heig
     return linked;
 }
 
+// Effect/component lookup tables and matching helpers.
 function _gridMaker_transformEffectLookupNames() {
     return [
         "Transform",
@@ -1829,6 +1835,7 @@ function _gridMaker_containsAny(source, hints) {
     return false;
 }
 
+// Property read/write helpers with defensive checks and readback validation.
 function _gridMaker_findProperty(component, names, expectedKind) {
     if (!component || !component.properties) {
         return null;
@@ -1984,6 +1991,7 @@ function _gridMaker_trySetPointProperty(prop, point, debugLines, label) {
     return false;
 }
 
+// Source metadata + sizing helpers used to compute target scale/crop/position.
 function _gridMaker_getCurrentScalePercent(component) {
     var scaleProp = _gridMaker_findProperty(component, [
         "scale",
@@ -2465,6 +2473,7 @@ function _gridMaker_isReasonableFrameSize(width, height) {
     return true;
 }
 
+// Placement and crop write helpers for Motion/Crop components.
 function _gridMaker_setCrop(component, left, right, top, bottom) {
     if (!component || !_gridMaker_componentMatchesType(component, "crop")) {
         return;
@@ -2533,6 +2542,7 @@ function _gridMaker_setCrop(component, left, right, top, bottom) {
     }
 }
 
+// Result + JSON helpers used by all hostscript public endpoints.
 function _gridMaker_clamp(v, min, max) {
     if (v < min) {
         return min;
@@ -2607,6 +2617,7 @@ function _gridMaker_jsonParse(text) {
     return null;
 }
 
+// Designer config storage in userData (per-ratio list/save/delete).
 function _gridMaker_designerSettingsFolder() {
     var base = Folder.userData;
     if (!base) {
@@ -2850,6 +2861,7 @@ function gridMaker_designerDeleteConfig(configId) {
     }
 }
 
+// Safe external URL opener for trusted release ZIP links only.
 function _gridMaker_isTrustedReleaseZipUrl(url) {
     if (!url) {
         return false;
