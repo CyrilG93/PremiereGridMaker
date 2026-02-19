@@ -14,6 +14,7 @@
       "label.preview": "预览",
       "label.debug": "调试",
       "action.copyDebug": "复制",
+      "action.applyBatch": "批量应用",
       "help.cellClick": "点击下方单元格：时间线中选中的视频片段将自动放置。",
       "help.designer": "设计器模式：点击区块放置已选片段。开启编辑可移动或调整区块大小。",
       "summary.format": "{rows} x {cols} | 比例 {ratio}",

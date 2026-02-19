@@ -14,6 +14,7 @@
       "label.preview": "Vista previa",
       "label.debug": "Debug",
       "action.copyDebug": "Copiar",
+      "action.applyBatch": "Aplicar por lote",
       "help.cellClick": "Haz clic en una celda: el clip de video seleccionado en la linea de tiempo se colocara automaticamente.",
       "help.designer": "Modo disenador: haz clic en un bloque para colocar el clip seleccionado. Activa Editar para mover o redimensionar bloques.",
       "summary.format": "{rows} x {cols} | ratio {ratio}",

@@ -14,6 +14,7 @@
       "label.preview": "Anteprima",
       "label.debug": "Debug",
       "action.copyDebug": "Copia",
+      "action.applyBatch": "Applica in serie",
       "help.cellClick": "Fai clic su una cella: la clip video selezionata nella timeline verra posizionata automaticamente.",
       "help.designer": "Modalita designer: fai clic su un blocco per posizionare la clip selezionata. Attiva Modifica per spostare o ridimensionare i blocchi.",
       "summary.format": "{rows} x {cols} | rapporto {ratio}",

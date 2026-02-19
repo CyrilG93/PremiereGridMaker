@@ -15,7 +15,7 @@
       "label.preview": "Apercu",
       "label.debug": "Debug",
       "action.copyDebug": "Copier",
-      "action.applyBatch": "Appliquer batch",
+      "action.applyBatch": "Appliquer en lot",
       "help.cellClick": "Clique une cellule: le clip video selectionne dans la timeline sera place automatiquement.",
       "help.designer": "Mode designer: clique une case pour placer le clip selectionne. Active Modifier pour deplacer ou redimensionner.",
       "summary.format": "{rows} x {cols} | ratio {ratio}",
