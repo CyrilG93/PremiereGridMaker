@@ -3285,6 +3285,8 @@ function gridMaker_designerListConfigs(ratioW, ratioH) {
                 name: cfg.name || cfg.id,
                 ratioW: cfg.ratioW,
                 ratioH: cfg.ratioH,
+                // Return per-config margin so UI can restore spacing when loading presets.
+                marginPx: _gridMaker_parseMarginPx(cfg.marginPx),
                 blocks: cfg.blocks || [],
                 updatedAt: cfg.updatedAt || ""
             });
@@ -3326,6 +3328,7 @@ function gridMaker_designerSaveConfig(payloadJson) {
 
         var id = _gridMaker_designerSanitizeId(payload.id);
         var ratioKey = _gridMaker_designerRatioKey(ratioW, ratioH);
+        var marginPx = _gridMaker_parseMarginPx(payload.marginPx);
         var now = (new Date()).toISOString ? (new Date()).toISOString() : String(new Date().getTime());
         var name = String(payload.name || "").replace(/^\s+|\s+$/g, "");
         if (!name) {
@@ -3340,6 +3343,7 @@ function gridMaker_designerSaveConfig(payloadJson) {
                 store.configs[i].ratioW = ratioW;
                 store.configs[i].ratioH = ratioH;
                 store.configs[i].ratioKey = ratioKey;
+                store.configs[i].marginPx = marginPx;
                 store.configs[i].blocks = blocks;
                 store.configs[i].updatedAt = now;
                 found = true;
@@ -3353,6 +3357,7 @@ function gridMaker_designerSaveConfig(payloadJson) {
                 ratioW: ratioW,
                 ratioH: ratioH,
                 ratioKey: ratioKey,
+                marginPx: marginPx,
                 blocks: blocks,
                 createdAt: now,
                 updatedAt: now
@@ -3480,6 +3485,8 @@ function gridMaker_designerImportConfigs() {
                 ratioW: ratioW,
                 ratioH: ratioH,
                 ratioKey: _gridMaker_designerRatioKey(ratioW, ratioH),
+                // Keep per-config spacing during import/export cycles.
+                marginPx: _gridMaker_parseMarginPx(cfg.marginPx),
                 blocks: blocks,
                 createdAt: String(cfg.createdAt || now),
                 updatedAt: now

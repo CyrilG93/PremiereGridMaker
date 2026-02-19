@@ -48,11 +48,10 @@
       </select>
 
       <label for="marginRange" data-i18n="label.margin">Global margin (px)</label>
-      <input id="marginRange" type="range" min="0" max="200" step="1" value="0" />
-
-      <p class="help" data-i18n="help.cellClick">
-        Click a cell below: the selected timeline video clip will be placed automatically.
-      </p>
+      <div class="input-row">
+        <input id="marginRange" type="range" min="0" max="200" step="1" value="0" />
+        <input id="marginNumber" type="number" min="0" max="200" step="1" value="0" />
+      </div>
 
       <button id="applyBatchBtn" type="button" data-i18n="action.applyBatch">Apply batch</button>
 
@@ -67,10 +66,8 @@
           <button id="designerNewBtn" type="button" data-i18n="designer.new">Nouvelle config</button>
           <input id="designerNameInput" type="text" maxlength="64" data-i18n-placeholder="designer.name_placeholder" placeholder="Nom de config" />
           <button id="designerSaveBtn" type="button" data-i18n="designer.save">Sauvegarder</button>
-        </div>
-        <div class="designer-actions designer-actions-io">
-          <button id="designerImportBtn" type="button" data-i18n="designer.import">Import JSON</button>
-          <button id="designerExportBtn" type="button" data-i18n="designer.export">Export JSON</button>
+          <button id="designerImportBtn" type="button" data-i18n="designer.import">Import configuration</button>
+          <button id="designerExportBtn" type="button" data-i18n="designer.export">Export configuration</button>
         </div>
       </div>
     </section>

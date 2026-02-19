@@ -64,6 +64,7 @@
   var colsNumber = document.getElementById("colsNumber");
   var ratio = document.getElementById("ratio");
   var marginRange = document.getElementById("marginRange");
+  var marginNumber = document.getElementById("marginNumber");
   var summary = document.getElementById("summary");
   var gridStage = document.getElementById("gridStage");
   var grid = document.getElementById("gridPreview");
@@ -565,8 +566,12 @@
     var marginPx = clampInt(nextMargin, 0, 200, 0);
     state.marginPx = marginPx;
 
+    // Keep slider and numeric input in sync for predictable margin editing UX.
     if (marginRange) {
       marginRange.value = String(marginPx);
+    }
+    if (marginNumber) {
+      marginNumber.value = String(marginPx);
     }
 
     if (!persist) {
@@ -1719,6 +1724,8 @@
       if (list[i].id === configId) {
         state.designer.activeConfigId = list[i].id;
         adoptDesignerBlocks(list[i].blocks || []);
+        // Restore the config-specific global margin when this preset is loaded.
+        applyGlobalMarginPx(list[i].marginPx, false);
         if (designerNameInput) {
           designerNameInput.value = list[i].name || "";
         }
@@ -1764,6 +1771,8 @@
       if (designerNameInput) {
         designerNameInput.value = found.name || "";
       }
+      // Keep margin bound to the active designer config for deterministic recalls.
+      applyGlobalMarginPx(found.marginPx, false);
     }
 
     renderPreview();
@@ -1791,6 +1800,7 @@
           name: String(cfg.name || cfg.id || ""),
           ratioW: cfg.ratioW,
           ratioH: cfg.ratioH,
+          marginPx: clampInt(cfg.marginPx, 0, 200, state.marginPx),
           blocks: cloneDesignerBlocks(cfg.blocks || []),
           updatedAt: String(cfg.updatedAt || "")
         });
@@ -1821,6 +1831,8 @@
       name: name,
       ratioW: state.ratioW,
       ratioH: state.ratioH,
+      // Persist margin with each designer config so recalling a preset restores spacing.
+      marginPx: state.marginPx,
       blocks: cloneDesignerBlocks(state.designer.blocks)
     };
 
@@ -2083,7 +2095,13 @@
     renderPreview();
   });
 
-  if (marginRange) {
+  if (marginRange && marginNumber) {
+    // Use the same range+number behavior as rows/cols for the margin control.
+    syncValue(marginRange, marginNumber, function (v) {
+      applyGlobalMarginPx(v, true);
+      appendDebug("UI> margin changed to " + state.marginPx + "px");
+    });
+  } else if (marginRange) {
     marginRange.addEventListener("input", function () {
       applyGlobalMarginPx(marginRange.value, true);
       appendDebug("UI> margin changed to " + state.marginPx + "px");

@@ -241,11 +241,7 @@ input[type="range"] {
 }
 
 .designer-actions-config {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr);
-}
-
-.designer-actions-io {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) repeat(3, minmax(0, 1fr));
 }
 
 .grid-header {
@@ -685,8 +681,7 @@ body.designer-dragging .designer-resize-handle {
   }
 
   .designer-actions,
-  .designer-actions-config,
-  .designer-actions-io {
+  .designer-actions-config {
     grid-template-columns: 1fr;
   }
 }
