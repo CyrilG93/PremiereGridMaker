@@ -1,4 +1,4 @@
-# Grid Maker (CEP) - v1.2.0
+# Grid Maker (CEP) - v1.2.5
 
 Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 
@@ -98,8 +98,8 @@ Batch order is deterministic:
 
 ### Designer import/export
 
-- `Import JSON`: merge configs from a `.json` file into local Designer presets.
-- `Export JSON`: save all local Designer presets into a shareable `.json` file.
+- `Import Configuration`: merge configs from a `.json` file into local Designer presets.
+- `Export Configuration`: save all local Designer presets into a shareable `.json` file.
 
 ## Premiere Preference Recommendation (Important)
 
@@ -156,6 +156,14 @@ window.PGM_I18N.registerLocale({
 Then include it in `index.html` before `js/main.js`.
 
 ## Changelog
+
+### v1.2.5
+
+- Added batch apply for selected clips (ordered by track from bottom to top, then by clip start time).
+- Added a global margin control (px) for classic grid and designer layouts, with persistence inside designer presets.
+- Added designer preset import/export (`Configuration`) to share and back up layouts in JSON.
+- Improved localization coverage for the new actions across all supported languages (including batch apply label translations).
+- Added high-level inline comments in main panel and host scripts to simplify long-term maintenance.
 
 ### v1.2.0
 
