@@ -26,6 +26,10 @@ The easiest and safest method is to use the installer scripts included in this r
 
 ### Windows
 
+Right click on the install-win.bat file and select "Run as administrator".
+
+Or run the following command:
+
 ```powershell
 cd C:\path\to\PremiereGridMaker
 .\install-win.bat
@@ -33,6 +37,9 @@ cd C:\path\to\PremiereGridMaker
 
 ### macOS
 
+Launch Terminal and drag and drop the install-macos.sh file into the Terminal window. Then press Enter.
+
+Or run the following commands:
 ```bash
 cd /path/to/PremiereGridMaker
 chmod +x ./install-macos.sh
