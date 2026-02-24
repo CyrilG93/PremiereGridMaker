@@ -616,6 +616,191 @@ function gridMaker_applyToSelectedCustomCell(leftNorm, topNorm, widthNorm, heigh
     }
 }
 
+// Designer capture endpoint: read current clip visible rectangle (Motion + Crop)
+// and return normalized bounds so the panel can create a designer block from it.
+function gridMaker_designerCaptureSelectedClipToBlock() {
+    var debugLines = [];
+    function dbg(message) {
+        _gridMaker_debugPush(debugLines, message);
+    }
+
+    try {
+        dbg("INPUT designerCapture");
+        app.enableQE();
+        dbg("QE enabled");
+
+        var seq = app.project.activeSequence;
+        if (!seq) {
+            dbg("No active sequence");
+            return _gridMaker_result("ERR", "no_active_sequence", null, debugLines);
+        }
+        dbg("Sequence name=" + (seq.name || "<unknown>"));
+
+        var selection = seq.getSelection();
+        if (!selection || selection.length < 1) {
+            dbg("No timeline selection");
+            return _gridMaker_result("ERR", "no_selection", null, debugLines);
+        }
+        dbg("Selection length=" + selection.length);
+
+        var videoClips = [];
+        for (var i = 0; i < selection.length; i++) {
+            if (selection[i] && selection[i].mediaType === "Video") {
+                videoClips.push(selection[i]);
+                dbg("Selected video #" + videoClips.length + " name=" + _gridMaker_clipName(selection[i]) + " start=" + _gridMaker_timeToSeconds(selection[i].start) + " end=" + _gridMaker_timeToSeconds(selection[i].end));
+            }
+        }
+        dbg("Video clips in selection=" + videoClips.length);
+        if (videoClips.length < 1) {
+            dbg("No selected video clip found in selection");
+            return _gridMaker_result("ERR", "no_video_selected", null, debugLines);
+        }
+        if (videoClips.length > 1) {
+            dbg("Multiple selected video clips; abort for deterministic capture");
+            return _gridMaker_result("ERR", "multiple_video_selected", null, debugLines);
+        }
+
+        var clip = videoClips[0];
+        dbg("Clip name=" + _gridMaker_clipName(clip) + " start=" + _gridMaker_timeToSeconds(clip.start) + " end=" + _gridMaker_timeToSeconds(clip.end));
+
+        var qSeq = null;
+        var qClip = null;
+        try {
+            qSeq = qe.project.getActiveSequence();
+        } catch (eQeSeq) {
+            qSeq = null;
+            dbg("QE sequence lookup exception=" + eQeSeq);
+        }
+        if (qSeq) {
+            dbg("QE sequence acquired");
+            qClip = _gridMaker_findQEClip(qSeq, seq, clip);
+            if (qClip) {
+                dbg("QE clip found");
+            } else {
+                dbg("QE clip not found (non-blocking for capture)");
+            }
+        } else {
+            dbg("QE sequence unavailable (non-blocking for capture)");
+        }
+
+        var motionComp = _gridMaker_findMotionComponent(clip);
+        var cropComp = _gridMaker_findManagedCropComponent(clip);
+        dbg("Components capture-check motion=" + _gridMaker_componentLabel(motionComp) + " crop=" + _gridMaker_componentLabel(cropComp));
+        _gridMaker_dumpPlacementComponents(clip, debugLines, "CAPTURE");
+
+        if (!motionComp) {
+            dbg("Motion component unavailable");
+            return _gridMaker_result("ERR", "motion_effect_unavailable", null, debugLines);
+        }
+
+        var frameSize = _gridMaker_getSequenceFrameSize(seq, qSeq);
+        if (!frameSize || !_gridMaker_isFiniteNumber(frameSize.width) || !_gridMaker_isFiniteNumber(frameSize.height) || !(frameSize.width > 0) || !(frameSize.height > 0)) {
+            dbg("Invalid sequence frame size");
+            return _gridMaker_result("ERR", "invalid_sequence_size", null, debugLines);
+        }
+        var frameW = frameSize.width;
+        var frameH = frameSize.height;
+        dbg("Frame size " + frameW + "x" + frameH);
+
+        var nativeSize = _gridMaker_getClipNativeFrameSize(clip, qClip, debugLines);
+        var sourceW = frameW;
+        var sourceH = frameH;
+        if (nativeSize && _gridMaker_isReasonableFrameSize(nativeSize.width, nativeSize.height)) {
+            sourceW = nativeSize.width;
+            sourceH = nativeSize.height;
+        }
+
+        // Capture uses the current Motion scale and current Crop values exactly as read.
+        var scale = _gridMaker_getCurrentScalePercent(motionComp);
+        if (!_gridMaker_isFiniteNumber(scale) || !(scale > 0)) {
+            scale = 100.0;
+            dbg("Scale fallback to 100 due to invalid Motion scale readback");
+        }
+
+        var currentPos = _gridMaker_getCurrentPosition(motionComp);
+        var positionMode = _gridMaker_detectPositionMode("motion", currentPos, frameW, frameH);
+        var absPos = _gridMaker_positionToAbsolute(currentPos, positionMode, frameW, frameH);
+        if (!absPos) {
+            dbg("Unable to convert Motion position to absolute frame coordinates");
+            return _gridMaker_result("ERR", "placement_apply_failed", null, debugLines);
+        }
+
+        var cropValues = _gridMaker_getCropValues(cropComp);
+        dbg("Capture readback scale=" + scale + " pos=" + _gridMaker_pointToString(currentPos) + " mode=" + positionMode + " absPos=[" + absPos[0] + "," + absPos[1] + "]");
+        dbg("Capture readback crop LRTB=" + cropValues.left.toFixed(3) + "," + cropValues.right.toFixed(3) + "," + cropValues.top.toFixed(3) + "," + cropValues.bottom.toFixed(3));
+
+        var baseDisplayW = sourceW;
+        var baseDisplayH = sourceH;
+        if (!(baseDisplayW > 0) || !(baseDisplayH > 0)) {
+            baseDisplayW = frameW;
+            baseDisplayH = frameH;
+        }
+
+        var scaledW = baseDisplayW * (scale / 100.0);
+        var scaledH = baseDisplayH * (scale / 100.0);
+        if (!(scaledW > 0) || !(scaledH > 0)) {
+            dbg("Invalid scaled size from captured Motion scale");
+            return _gridMaker_result("ERR", "invalid_grid", null, debugLines);
+        }
+
+        var visX = 1.0 - ((cropValues.left + cropValues.right) / 100.0);
+        var visY = 1.0 - ((cropValues.top + cropValues.bottom) / 100.0);
+        visX = _gridMaker_clamp(visX, 0.0, 1.0);
+        visY = _gridMaker_clamp(visY, 0.0, 1.0);
+
+        var visibleW = scaledW * visX;
+        var visibleH = scaledH * visY;
+        if (!(visibleW > 0.5) || !(visibleH > 0.5)) {
+            dbg("Visible rectangle collapsed after crop");
+            return _gridMaker_result("ERR", "invalid_grid", null, debugLines);
+        }
+
+        var leftPx = absPos[0] - (visibleW * 0.5);
+        var topPx = absPos[1] - (visibleH * 0.5);
+        var rightPx = leftPx + visibleW;
+        var bottomPx = topPx + visibleH;
+        dbg("Visible rect px before clip left=" + leftPx.toFixed(3) + " top=" + topPx.toFixed(3) + " right=" + rightPx.toFixed(3) + " bottom=" + bottomPx.toFixed(3));
+
+        // Clip to the sequence frame because Designer blocks live only inside the visible canvas.
+        if (leftPx < 0) {
+            leftPx = 0;
+        }
+        if (topPx < 0) {
+            topPx = 0;
+        }
+        if (rightPx > frameW) {
+            rightPx = frameW;
+        }
+        if (bottomPx > frameH) {
+            bottomPx = frameH;
+        }
+        var clippedW = rightPx - leftPx;
+        var clippedH = bottomPx - topPx;
+        dbg("Visible rect px after clip left=" + leftPx.toFixed(3) + " top=" + topPx.toFixed(3) + " width=" + clippedW.toFixed(3) + " height=" + clippedH.toFixed(3));
+
+        if (!(clippedW > 0.5) || !(clippedH > 0.5)) {
+            dbg("Visible rectangle is outside frame after clipping");
+            return _gridMaker_result("ERR", "designer_capture_out_of_bounds", null, debugLines);
+        }
+
+        var leftNorm = leftPx / frameW;
+        var topNorm = topPx / frameH;
+        var widthNorm = clippedW / frameW;
+        var heightNorm = clippedH / frameH;
+
+        dbg("Visible rect norm left=" + leftNorm.toFixed(6) + " top=" + topNorm.toFixed(6) + " width=" + widthNorm.toFixed(6) + " height=" + heightNorm.toFixed(6));
+        return _gridMaker_result("OK", "designer_block_captured", {
+            leftNorm: leftNorm.toFixed(6),
+            topNorm: topNorm.toFixed(6),
+            widthNorm: widthNorm.toFixed(6),
+            heightNorm: heightNorm.toFixed(6)
+        }, debugLines);
+    } catch (e) {
+        dbg("EXCEPTION " + e);
+        return _gridMaker_result("ERR", "exception", { message: e }, debugLines);
+    }
+}
+
 // Batch endpoint: apply a list of normalized cells to selected clips (track order: bottom -> top).
 function gridMaker_applyBatchToSelectedClips(cellsJson, ratioW, ratioH, marginPx) {
     var debugLines = [];
@@ -3071,6 +3256,92 @@ function _gridMaker_setCrop(component, left, right, top, bottom) {
             pBottom.setValue(bottom, true);
         } catch (e4) {}
     }
+}
+
+// Read current Crop values (percent) from a Crop component. Missing component means no crop.
+function _gridMaker_getCropValues(component) {
+    var out = { left: 0, right: 0, top: 0, bottom: 0 };
+    if (!component || !_gridMaker_componentMatchesType(component, "crop")) {
+        return out;
+    }
+
+    var pLeft = _gridMaker_findProperty(component, [
+        "left",
+        "gauche",
+        "izquierda",
+        "sinistra",
+        "links",
+        "esquerda",
+        "adbe crop left"
+    ], "number");
+    var pRight = _gridMaker_findProperty(component, [
+        "right",
+        "droite",
+        "derecha",
+        "destra",
+        "rechts",
+        "direita",
+        "adbe crop right"
+    ], "number");
+    var pTop = _gridMaker_findProperty(component, [
+        "top",
+        "haut",
+        "superior",
+        "alto",
+        "oben",
+        "topo",
+        "adbe crop top"
+    ], "number");
+    var pBottom = _gridMaker_findProperty(component, [
+        "bottom",
+        "bas",
+        "inferior",
+        "basso",
+        "unten",
+        "baixo",
+        "adbe crop bottom"
+    ], "number");
+
+    var left = _gridMaker_toNumber(_gridMaker_readPropertyValue(pLeft));
+    var right = _gridMaker_toNumber(_gridMaker_readPropertyValue(pRight));
+    var top = _gridMaker_toNumber(_gridMaker_readPropertyValue(pTop));
+    var bottom = _gridMaker_toNumber(_gridMaker_readPropertyValue(pBottom));
+
+    if (_gridMaker_isFiniteNumber(left)) {
+        out.left = _gridMaker_clamp(left, 0, 99);
+    }
+    if (_gridMaker_isFiniteNumber(right)) {
+        out.right = _gridMaker_clamp(right, 0, 99);
+    }
+    if (_gridMaker_isFiniteNumber(top)) {
+        out.top = _gridMaker_clamp(top, 0, 99);
+    }
+    if (_gridMaker_isFiniteNumber(bottom)) {
+        out.bottom = _gridMaker_clamp(bottom, 0, 99);
+    }
+
+    return out;
+}
+
+// Convert the current Position property readback to absolute sequence pixels.
+function _gridMaker_positionToAbsolute(point, mode, frameW, frameH) {
+    if (!_gridMaker_isPointValue(point)) {
+        return null;
+    }
+
+    var x = _gridMaker_toNumber(point[0]);
+    var y = _gridMaker_toNumber(point[1]);
+    if (!_gridMaker_isFiniteNumber(x) || !_gridMaker_isFiniteNumber(y)) {
+        return null;
+    }
+
+    if (mode === "motion_normalized" || mode === "unknown_normalized") {
+        return [x * frameW, y * frameH];
+    }
+    if (mode === "transform_centered") {
+        return [x + (frameW * 0.5), y + (frameH * 0.5)];
+    }
+    return [x, y];
 }
 
 // Result + JSON helpers used by all hostscript public endpoints.

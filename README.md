@@ -12,6 +12,7 @@ Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 - Batch apply: map selected timeline clips to cells in one click (ordered by track from bottom to top)
 - No manual position presets required
 - Grid Designer mode (10x10 canvas): irregular layouts with draggable/resizable blocks
+- Create a Designer block from the currently selected clip visual state (Motion Position/Scale + Crop)
 - Designer presets per ratio, saved locally with gallery preview and quick load/delete
 - Designer presets also store their own Global Margin value
 - Designer preset import/export in JSON (team sharing + backup)
@@ -107,6 +108,12 @@ Batch order is deterministic:
 
 - `Import Configuration`: merge configs from a `.json` file into local Designer presets.
 - `Export Configuration`: save all local Designer presets into a shareable `.json` file.
+
+### Designer capture from clip
+
+- In Designer mode, use `Create from clip` to create a block from the selected timeline clip visible state.
+- MVP scope reads `Motion` (`Position`, `Scale`) and `Crop` only.
+- Rotation and other advanced effects are intentionally ignored in this capture flow.
 
 ## Premiere Preference Recommendation (Important)
 

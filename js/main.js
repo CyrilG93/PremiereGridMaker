@@ -83,6 +83,7 @@
   var designerControls = document.getElementById("designerControls");
   var designerEditBtn = document.getElementById("designerEditBtn");
   var designerFreeBtn = document.getElementById("designerFreeBtn");
+  var designerCaptureBtn = document.getElementById("designerCaptureBtn");
   var designerAddBtn = document.getElementById("designerAddBtn");
   var designerRemoveBtn = document.getElementById("designerRemoveBtn");
   var designerNewBtn = document.getElementById("designerNewBtn");
@@ -1953,6 +1954,75 @@
     renderPreview();
   }
 
+  // Create a designer block from normalized sequence bounds returned by the host capture endpoint.
+  function addDesignerBlockFromNormalizedBounds(leftNorm, topNorm, widthNorm, heightNorm) {
+    var rawBlock = {
+      id: nextDesignerBlockId(),
+      x: clampNumber(leftNorm, 0, 1, 0) * DESIGNER_GRID_SIZE,
+      y: clampNumber(topNorm, 0, 1, 0) * DESIGNER_GRID_SIZE,
+      w: clampNumber(widthNorm, 0, 1, 0) * DESIGNER_GRID_SIZE,
+      h: clampNumber(heightNorm, 0, 1, 0) * DESIGNER_GRID_SIZE
+    };
+
+    var block = normalizeDesignerBlock(rawBlock, rawBlock.id);
+    if (!block) {
+      return null;
+    }
+
+    // Overlap is allowed in designer mode; only bounds/min-size are enforced here.
+    if (!designerCanPlace(block, "", true)) {
+      return null;
+    }
+
+    state.designer.blocks.push(block);
+    state.designer.selectedBlockId = block.id;
+    return block;
+  }
+
+  // Read the selected clip visual rectangle (Motion + Crop) and add it as a new designer block.
+  function captureDesignerBlockFromSelectedClip() {
+    appendDebug("UI> evalScript: gridMaker_designerCaptureSelectedClipToBlock()");
+    setStatusKey("status.designer_capture_reading", {}, "");
+
+    callHost("gridMaker_designerCaptureSelectedClipToBlock()", function (result) {
+      appendDebug("HOST< raw(designer-capture): " + (result || "<empty>"));
+      var parsed = parseHostResponse(result);
+      appendHostDebug(parsed.hostDebug);
+
+      if (parsed.kind !== "ok" || parsed.code !== "designer_block_captured") {
+        setStatusKey(parsed.key || "status.designer_capture_failed", parsed.vars || {}, "err");
+        return;
+      }
+
+      var details = parsed.details || {};
+      var leftNorm = parseFloat(details.leftNorm);
+      var topNorm = parseFloat(details.topNorm);
+      var widthNorm = parseFloat(details.widthNorm);
+      var heightNorm = parseFloat(details.heightNorm);
+
+      if (isNaN(leftNorm) || isNaN(topNorm) || isNaN(widthNorm) || isNaN(heightNorm)) {
+        appendDebug("UI> designer capture parse failed (invalid normalized bounds)");
+        setStatusKey("status.designer_capture_failed", {}, "err");
+        return;
+      }
+
+      var block = addDesignerBlockFromNormalizedBounds(leftNorm, topNorm, widthNorm, heightNorm);
+      if (!block) {
+        appendDebug("UI> designer capture rejected by block normalization/bounds");
+        setStatusKey("status.designer_capture_failed", {}, "err");
+        return;
+      }
+
+      appendDebug(
+        "UI> designer block captured id=" + block.id +
+        " x=" + block.x + " y=" + block.y +
+        " w=" + block.w + " h=" + block.h
+      );
+      setStatusKey("status.designer_block_captured", {}, "ok");
+      renderPreview();
+    });
+  }
+
   function removeSelectedDesignerBlock() {
     var selectedId = state.designer.selectedBlockId;
     if (!selectedId) {
@@ -2187,6 +2257,15 @@
         return;
       }
       addDesignerBlock();
+    });
+  }
+
+  if (designerCaptureBtn) {
+    designerCaptureBtn.addEventListener("click", function () {
+      if (!state.designer.enabled) {
+        return;
+      }
+      captureDesignerBlockFromSelectedClip();
     });
   }
 
