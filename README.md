@@ -104,6 +104,7 @@ Batch order is deterministic:
 
 - clips are sorted by track from bottom to top (`V1`, then `V2`, etc.),
 - then by timeline start time inside each track.
+- in `Grid Designer` mode, target cells are applied in the visible block number order (`1`, `2`, `3`, ...).
 
 ### Designer import/export
 

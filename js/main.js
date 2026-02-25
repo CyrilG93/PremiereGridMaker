@@ -1096,18 +1096,9 @@
     return cells;
   }
 
-  // Build designer batch targets using visual order: top-to-bottom then left-to-right.
+  // Build designer batch targets using the current block numbering order shown in the Designer UI.
   function buildDesignerBatchCells() {
     var blocks = (state.designer.blocks || []).slice();
-    blocks.sort(function (a, b) {
-      if (Math.abs(a.y - b.y) > 0.0001) {
-        return a.y - b.y;
-      }
-      if (Math.abs(a.x - b.x) > 0.0001) {
-        return a.x - b.x;
-      }
-      return String(a.id || "").localeCompare(String(b.id || ""));
-    });
 
     var cells = [];
     for (var i = 0; i < blocks.length; i += 1) {
@@ -1117,7 +1108,8 @@
         topNorm: block.y / DESIGNER_GRID_SIZE,
         widthNorm: block.w / DESIGNER_GRID_SIZE,
         heightNorm: block.h / DESIGNER_GRID_SIZE,
-        label: String(block.id || ("block_" + i))
+        // Keep batch logs aligned with the visible block numbers (1, 2, 3...) in Designer mode.
+        label: "block_" + String(i + 1)
       });
     }
     return cells;
