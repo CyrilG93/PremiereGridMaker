@@ -696,11 +696,8 @@
   }
 
   function adoptDesignerBlocks(blocks) {
-    var next = cloneDesignerBlocks(blocks);
-    if (!next.length) {
-      next = makeDefaultDesignerBlocks();
-    }
-    state.designer.blocks = next;
+    // Keep the designer state exactly as provided so empty drafts/presets remain empty.
+    state.designer.blocks = cloneDesignerBlocks(blocks);
     ensureDesignerSelection();
   }
 
@@ -1453,10 +1450,6 @@
     grid.style.gridTemplateRows = "";
     grid.style.gridTemplateColumns = "";
 
-    if (!state.designer.blocks.length) {
-      adoptDesignerBlocks(makeDefaultDesignerBlocks());
-    }
-
     var blocks = state.designer.blocks.slice();
 
     for (var i = 0; i < blocks.length; i += 1) {
@@ -1707,9 +1700,6 @@
     appendDebug("UI> designer mode " + (next ? "enabled" : "disabled"));
 
     if (next) {
-      if (!state.designer.blocks.length) {
-        adoptDesignerBlocks(makeDefaultDesignerBlocks());
-      }
       loadDesignerConfigs(state.designer.activeConfigId, true);
       setStatusKey("status.designer_ready", {}, "ok");
     } else {
@@ -1814,11 +1804,6 @@
   }
 
   function saveDesignerConfig() {
-    if (!state.designer.blocks.length) {
-      setStatusKey("status.designer_empty", {}, "err");
-      return;
-    }
-
     var name = (designerNameInput && designerNameInput.value) ? designerNameInput.value.trim() : "";
     if (!name) {
       name = t("designer.default_name");
@@ -1882,7 +1867,8 @@
       appendDebug("UI> designer config deleted id=" + configId);
       if (state.designer.activeConfigId === configId) {
         state.designer.activeConfigId = "";
-        adoptDesignerBlocks(makeDefaultDesignerBlocks());
+        // Leave an empty draft after deleting the active preset instead of recreating a default block.
+        adoptDesignerBlocks([]);
         if (designerNameInput) {
           designerNameInput.value = t("designer.default_name");
         }
@@ -1897,7 +1883,8 @@
     state.designer.editMode = true;
     state.designer.freeMode = false;
     stopDesignerDrag();
-    adoptDesignerBlocks(makeDefaultDesignerBlocks());
+    // New designer presets now start as an empty canvas until the user adds/captures blocks.
+    adoptDesignerBlocks([]);
     if (designerNameInput) {
       designerNameInput.value = t("designer.default_name");
     }
@@ -2413,7 +2400,8 @@
     designerGalleryPanel.style.display = "none";
   }
 
-  adoptDesignerBlocks(makeDefaultDesignerBlocks());
+  // Initialize designer state empty; classic mode preview does not require a default block.
+  adoptDesignerBlocks([]);
   if (designerNameInput) {
     designerNameInput.value = t("designer.default_name");
   }

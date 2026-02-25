@@ -3592,10 +3592,8 @@ function gridMaker_designerSaveConfig(payloadJson) {
             return _gridMaker_jsonStringify({ ok: false, message: "invalid_ratio" });
         }
 
+        // Allow empty designer presets so the UI can persist a blank draft/grid intentionally.
         var blocks = _gridMaker_designerNormalizeBlocks(payload.blocks);
-        if (blocks.length < 1) {
-            return _gridMaker_jsonStringify({ ok: false, message: "empty_blocks" });
-        }
 
         var id = _gridMaker_designerSanitizeId(payload.id);
         var ratioKey = _gridMaker_designerRatioKey(ratioW, ratioH);
@@ -3745,10 +3743,8 @@ function gridMaker_designerImportConfigs() {
             if (!_gridMaker_isFiniteNumber(ratioW) || !_gridMaker_isFiniteNumber(ratioH) || !(ratioW > 0) || !(ratioH > 0)) {
                 continue;
             }
+            // Keep empty configs during import so shared preset packs can include blank drafts/templates.
             var blocks = _gridMaker_designerNormalizeBlocks(cfg.blocks);
-            if (blocks.length < 1) {
-                continue;
-            }
 
             normalized.push({
                 id: _gridMaker_designerSanitizeId(cfg.id || ("cfg_" + now + "_" + i)),
