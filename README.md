@@ -1,4 +1,4 @@
-# Grid Maker (CEP) - v1.2.5
+# Grid Maker (CEP) - v1.2.6
 
 Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 
@@ -173,6 +173,13 @@ window.PGM_I18N.registerLocale({
 Then include it in `index.html` before `js/main.js`.
 
 ## Changelog
+
+### v1.2.6
+
+- Added `Create from clip` in Grid Designer to capture a block from the selected clip visible state (`Motion` position/scale + `Crop`).
+- Fixed Designer batch apply ordering to follow visible block numbers (`1`, `2`, `3`, ...) instead of geometric sorting.
+- Allowed empty Designer presets (blank drafts/templates), including save/import support.
+- Improved Designer actions row compactness so 5 action buttons stay on one line more often.
 
 ### v1.2.5
 

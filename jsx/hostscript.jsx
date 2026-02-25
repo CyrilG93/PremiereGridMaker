@@ -3673,7 +3673,7 @@ function gridMaker_designerExportConfigs() {
         var exportPayload = {
             exportedAt: (new Date()).toISOString ? (new Date()).toISOString() : String(new Date().getTime()),
             source: "PremiereGridMaker",
-            version: "1.2.0",
+            version: "1.2.6",
             configs: (store && store.configs instanceof Array) ? store.configs : []
         };
 
