@@ -284,7 +284,9 @@ input[type="range"] {
   display: flex;
   align-items: center;
   justify-content: flex-start;
+  flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
   cursor: pointer;
   user-select: none;
   list-style: none;
@@ -331,6 +333,8 @@ input[type="range"] {
   align-items: center;
   gap: 6px;
   margin-left: auto;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .designer-gallery-panel:not([open]) .designer-gallery-tools {
@@ -719,6 +723,12 @@ body.designer-dragging .designer-resize-handle {
   #designerNameInput {
     /* Keep the config name input readable on narrow widths without breaking the whole panel. */
     grid-column: 1 / -1;
+  }
+
+  .designer-gallery-tools {
+    /* Move the slider row below the title before it overflows the Configs panel width. */
+    margin-left: 0;
+    width: 100%;
   }
 }
 
