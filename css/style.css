@@ -271,6 +271,8 @@ input[type="range"] {
 }
 
 .designer-gallery-panel {
+  /* Keep the full preset card area visible; let the global app scrollbar handle small panel heights. */
+  flex: 0 0 auto;
   min-height: 0;
   overflow: hidden;
   padding: 2px 6px;
