@@ -249,11 +249,17 @@ input[type="range"] {
 }
 
 .designer-actions-config {
-  grid-template-columns: minmax(88px, 1fr) minmax(120px, 1.4fr) repeat(3, minmax(96px, 1fr));
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) repeat(3, minmax(0, 1fr));
 }
 
 .designer-actions > * {
   min-width: 0;
+}
+
+.designer-actions-config button {
+  /* Let long localized labels wrap inside the button instead of overflowing their grid cell. */
+  white-space: normal;
+  line-height: 1.15;
 }
 
 .grid-header {
@@ -702,6 +708,17 @@ body.designer-dragging .designer-resize-handle {
   .designer-actions,
   .designer-actions-config {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) and (min-width: 521px) {
+  .designer-actions-config {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #designerNameInput {
+    /* Keep the config name input readable on narrow widths without breaking the whole panel. */
+    grid-column: 1 / -1;
   }
 }
 
