@@ -180,6 +180,9 @@ Then include it in `index.html` before `js/main.js`.
 - Fixed Designer batch apply ordering to follow visible block numbers (`1`, `2`, `3`, ...) instead of geometric sorting.
 - Allowed empty Designer presets (blank drafts/templates), including save/import support.
 - Improved Designer actions row compactness so 5 action buttons stay on one line more often.
+- Improved Designer responsive layout to prevent overflow/clipping of config action controls on smaller panel widths.
+- Fixed `Configs` preset thumbnails overflow on narrow panels and prevented the `Configs` section from vertically clipping preset names.
+- Kept small-height behavior on a single global panel scrollbar (instead of local scrolling inside Designer sections).
 
 ### v1.2.5
 
