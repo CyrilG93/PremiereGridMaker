@@ -15,7 +15,6 @@ Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 - Create a Designer block from the currently selected clip visual state (Motion Position/Scale + Crop)
 - Designer presets per ratio, saved locally with gallery preview and quick load/delete
 - Designer presets also store their own Global Margin value
-- Designer presets can be intentionally empty (blank canvas drafts/templates)
 - Designer preset import/export in JSON (team sharing + backup)
 - UI localization: English (default), French, Spanish, German, Portuguese (Brazil), Japanese, Italian, Chinese (Simplified), Russian
 - Language selector with flag dropdown
