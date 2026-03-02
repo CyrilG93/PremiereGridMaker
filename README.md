@@ -1,4 +1,4 @@
-# Grid Maker (CEP) - v1.2.6
+# Grid Maker (CEP) - v1.3.0
 
 Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 
