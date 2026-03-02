@@ -11,6 +11,7 @@
       "label.rows": "Righe (altezza)",
       "label.cols": "Colonne (larghezza)",
       "label.ratio": "Rapporto sorgente obiettivo",
+      "label.roundness": "Arrotondamento (%)",
       "label.preview": "Anteprima",
       "label.debug": "Debug",
       "action.copyDebug": "Copia",

@@ -7,6 +7,8 @@ Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 - Grid size with two sliders: rows x columns (1 to 10)
 - Ratio preset selector: `16:9`, `1:1`, `9:16`, `4:5`, `3:2`
 - Global margin slider (px) applied to outer margins and spacing between cells/blocks
+- Auto crop effect selection by Premiere version: `Rounded Crop` on `25.5+`, classic `Crop` fallback on older versions
+- Roundness slider (`%`) for rounded corners in normal + designer workflows (auto-hidden on non-compatible hosts)
 - Clickable live grid preview
 - One-click placement to a target cell using `Transform` + `Crop`
 - Batch apply: map selected timeline clips to cells in one click (ordered by track from bottom to top)
@@ -86,10 +88,11 @@ for v in {8..15}; do defaults write "com.adobe.CSXS.$v" PlayerDebugMode 1; done
 1. Open a sequence.
 2. Select one video clip on timeline.
 3. Set rows, columns, and ratio.
-4. Optional: adjust global margin (px).
+4. Optional: adjust global margin (px) and roundness (% when supported).
 5. Click a target cell in the preview.
 
-The extension adds/uses `Transform` and `Crop`, then positions/scales the selected clip for the target grid cell.
+The extension adds/uses `Transform` and a crop effect, then positions/scales the selected clip for the target grid cell.
+On Premiere `25.5+`, it prefers `Rounded Crop` so corner roundness can be applied; on older hosts it falls back to classic `Crop`.
 
 ### Batch apply
 
@@ -126,6 +129,7 @@ If your team uses a Fit workflow, keep it consistent on all clips before using G
 ## Compatibility
 
 - Host: Adobe Premiere Pro 2025+ (`PPRO 25.0+`)
+- `Rounded Crop` + `Roundness` controls: available on `PPRO 25.5+` (hidden/ignored on older versions)
 - OS: Windows and macOS
 - Technology: CEP panel + ExtendScript/QE API
 
@@ -170,6 +174,15 @@ window.PGM_I18N.registerLocale({
 Then include it in `index.html` before `js/main.js`.
 
 ## Changelog
+
+### Unreleased (main branch)
+
+- Added host capability detection (`Rounded Crop` support) to adapt UI controls per Premiere version.
+- Added dynamic crop effect strategy:
+  - `Rounded Crop` preferred on Premiere `25.5+`
+  - classic `Crop` fallback on older/non-compatible hosts.
+- Added global `Roundness` slider (`0..100%`) for both classic and designer apply flows.
+- Added `roundness` persistence in designer preset save/load/import/export.
 
 ### v1.2.6
 

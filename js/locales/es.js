@@ -11,6 +11,7 @@
       "label.rows": "Filas (alto)",
       "label.cols": "Columnas (ancho)",
       "label.ratio": "Relacion de aspecto objetivo",
+      "label.roundness": "Redondez (%)",
       "label.preview": "Vista previa",
       "label.debug": "Debug",
       "action.copyDebug": "Copiar",

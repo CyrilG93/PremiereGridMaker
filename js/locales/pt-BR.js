@@ -11,6 +11,7 @@
       "label.rows": "Linhas (altura)",
       "label.cols": "Colunas (largura)",
       "label.ratio": "Proporcao de origem",
+      "label.roundness": "Arredondamento (%)",
       "label.preview": "Pre-visualizacao",
       "label.debug": "Debug",
       "action.copyDebug": "Copiar",

@@ -1,12 +1,30 @@
+// Expose host-side capability flags so the panel can adapt UI controls by Premiere version.
+function gridMaker_getHostCapabilities() {
+    try {
+        return _gridMaker_jsonStringify({
+            ok: true,
+            hostVersion: _gridMaker_getHostVersionString(),
+            supportsRoundedCrop: _gridMaker_supportsRoundedCropEffect()
+        });
+    } catch (e) {
+        return _gridMaker_jsonStringify({
+            ok: false,
+            hostVersion: "",
+            supportsRoundedCrop: false,
+            message: String(e)
+        });
+    }
+}
+
 // Main entry for classic grid placement (row/col in an N x M layout).
-function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH, marginPx) {
+function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH, marginPx, roundnessPct) {
     var debugLines = [];
     function dbg(message) {
         _gridMaker_debugPush(debugLines, message);
     }
 
     try {
-        dbg("INPUT row=" + row + " col=" + col + " rows=" + rows + " cols=" + cols + " ratio=" + ratioW + ":" + ratioH + " marginPx=" + marginPx);
+        dbg("INPUT row=" + row + " col=" + col + " rows=" + rows + " cols=" + cols + " ratio=" + ratioW + ":" + ratioH + " marginPx=" + marginPx + " roundnessPct=" + roundnessPct);
         app.enableQE();
         dbg("QE enabled");
 
@@ -24,7 +42,8 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH, mar
         ratioW = parseFloat(ratioW);
         ratioH = parseFloat(ratioH);
         marginPx = _gridMaker_parseMarginPx(marginPx);
-        dbg("PARSED row=" + row + " col=" + col + " rows=" + rows + " cols=" + cols + " ratio=" + ratioW + ":" + ratioH + " marginPx=" + marginPx);
+        roundnessPct = _gridMaker_parseRoundnessPercent(roundnessPct);
+        dbg("PARSED row=" + row + " col=" + col + " rows=" + rows + " cols=" + cols + " ratio=" + ratioW + ":" + ratioH + " marginPx=" + marginPx + " roundnessPct=" + roundnessPct);
 
         if (rows < 1 || cols < 1) {
             dbg("Invalid grid");
@@ -65,10 +84,14 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH, mar
         var clip = videoClips[0];
         dbg("Clip name=" + _gridMaker_clipName(clip) + " start=" + _gridMaker_timeToSeconds(clip.start) + " end=" + _gridMaker_timeToSeconds(clip.end));
 
+        // Prefer Rounded Crop on supported hosts, with safe fallback to classic Crop.
+        var preferRoundedCrop = _gridMaker_supportsRoundedCropEffect();
+        dbg("Rounded Crop supported=" + preferRoundedCrop);
+
         var transformComp = _gridMaker_findManagedTransformComponent(clip);
         var motionComp = _gridMaker_findMotionComponent(clip);
         var placementComp = motionComp;
-        var cropComp = _gridMaker_findManagedCropComponent(clip);
+        var cropComp = _gridMaker_findManagedCropComponent(clip, preferRoundedCrop);
         dbg("Components pre-check placement=" + _gridMaker_componentLabel(placementComp) + " transform=" + _gridMaker_componentLabel(transformComp) + " motion=" + _gridMaker_componentLabel(motionComp) + " crop=" + _gridMaker_componentLabel(cropComp));
         _gridMaker_dumpPlacementComponents(clip, debugLines, "BEFORE");
 
@@ -122,11 +145,10 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH, mar
             }
 
             if (!cropComp) {
-                cropComp = _gridMaker_ensureManagedEffect(
+                cropComp = _gridMaker_ensureManagedCropComponent(
                     clip,
                     qClip,
-                    "crop",
-                    _gridMaker_cropEffectLookupNames(),
+                    preferRoundedCrop,
                     debugLines
                 );
                 dbg("Crop component after ensure=" + _gridMaker_componentLabel(cropComp));
@@ -284,6 +306,7 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH, mar
         var cropRequired = (cropL > 0.0001 || cropR > 0.0001 || cropT > 0.0001 || cropB > 0.0001);
         if (cropComp) {
             _gridMaker_setCrop(cropComp, cropL, cropR, cropT, cropB);
+            _gridMaker_setCropRoundness(cropComp, roundnessPct, debugLines);
         } else if (cropRequired) {
             dbg("Crop component unavailable and crop required");
             return _gridMaker_result("ERR", "crop_effect_unavailable", null, debugLines);
@@ -307,14 +330,14 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH, mar
 }
 
 // Main entry for designer placement using normalized bounds (0..1).
-function gridMaker_applyToSelectedCustomCell(leftNorm, topNorm, widthNorm, heightNorm, ratioW, ratioH, marginPx) {
+function gridMaker_applyToSelectedCustomCell(leftNorm, topNorm, widthNorm, heightNorm, ratioW, ratioH, marginPx, roundnessPct) {
     var debugLines = [];
     function dbg(message) {
         _gridMaker_debugPush(debugLines, message);
     }
 
     try {
-        dbg("INPUT customCell left=" + leftNorm + " top=" + topNorm + " width=" + widthNorm + " height=" + heightNorm + " ratio=" + ratioW + ":" + ratioH + " marginPx=" + marginPx);
+        dbg("INPUT customCell left=" + leftNorm + " top=" + topNorm + " width=" + widthNorm + " height=" + heightNorm + " ratio=" + ratioW + ":" + ratioH + " marginPx=" + marginPx + " roundnessPct=" + roundnessPct);
         app.enableQE();
         dbg("QE enabled");
 
@@ -332,7 +355,8 @@ function gridMaker_applyToSelectedCustomCell(leftNorm, topNorm, widthNorm, heigh
         ratioW = parseFloat(ratioW);
         ratioH = parseFloat(ratioH);
         marginPx = _gridMaker_parseMarginPx(marginPx);
-        dbg("PARSED customCell left=" + leftNorm + " top=" + topNorm + " width=" + widthNorm + " height=" + heightNorm + " ratio=" + ratioW + ":" + ratioH + " marginPx=" + marginPx);
+        roundnessPct = _gridMaker_parseRoundnessPercent(roundnessPct);
+        dbg("PARSED customCell left=" + leftNorm + " top=" + topNorm + " width=" + widthNorm + " height=" + heightNorm + " ratio=" + ratioW + ":" + ratioH + " marginPx=" + marginPx + " roundnessPct=" + roundnessPct);
 
         if (!(ratioW > 0) || !(ratioH > 0)) {
             dbg("Invalid ratio");
@@ -377,10 +401,14 @@ function gridMaker_applyToSelectedCustomCell(leftNorm, topNorm, widthNorm, heigh
         var clip = videoClips[0];
         dbg("Clip name=" + _gridMaker_clipName(clip) + " start=" + _gridMaker_timeToSeconds(clip.start) + " end=" + _gridMaker_timeToSeconds(clip.end));
 
+        // Prefer Rounded Crop on supported hosts, with safe fallback to classic Crop.
+        var preferRoundedCrop = _gridMaker_supportsRoundedCropEffect();
+        dbg("Rounded Crop supported=" + preferRoundedCrop);
+
         var transformComp = _gridMaker_findManagedTransformComponent(clip);
         var motionComp = _gridMaker_findMotionComponent(clip);
         var placementComp = motionComp;
-        var cropComp = _gridMaker_findManagedCropComponent(clip);
+        var cropComp = _gridMaker_findManagedCropComponent(clip, preferRoundedCrop);
         dbg("Components pre-check placement=" + _gridMaker_componentLabel(placementComp) + " transform=" + _gridMaker_componentLabel(transformComp) + " motion=" + _gridMaker_componentLabel(motionComp) + " crop=" + _gridMaker_componentLabel(cropComp));
         _gridMaker_dumpPlacementComponents(clip, debugLines, "BEFORE");
 
@@ -434,11 +462,10 @@ function gridMaker_applyToSelectedCustomCell(leftNorm, topNorm, widthNorm, heigh
             }
 
             if (!cropComp) {
-                cropComp = _gridMaker_ensureManagedEffect(
+                cropComp = _gridMaker_ensureManagedCropComponent(
                     clip,
                     qClip,
-                    "crop",
-                    _gridMaker_cropEffectLookupNames(),
+                    preferRoundedCrop,
                     debugLines
                 );
                 dbg("Crop component after ensure=" + _gridMaker_componentLabel(cropComp));
@@ -596,6 +623,7 @@ function gridMaker_applyToSelectedCustomCell(leftNorm, topNorm, widthNorm, heigh
         var cropRequired = (cropL > 0.0001 || cropR > 0.0001 || cropT > 0.0001 || cropB > 0.0001);
         if (cropComp) {
             _gridMaker_setCrop(cropComp, cropL, cropR, cropT, cropB);
+            _gridMaker_setCropRoundness(cropComp, roundnessPct, debugLines);
         } else if (cropRequired) {
             dbg("Crop component unavailable and crop required");
             return _gridMaker_result("ERR", "crop_effect_unavailable", null, debugLines);
@@ -802,14 +830,14 @@ function gridMaker_designerCaptureSelectedClipToBlock() {
 }
 
 // Batch endpoint: apply a list of normalized cells to selected clips (track order: bottom -> top).
-function gridMaker_applyBatchToSelectedClips(cellsJson, ratioW, ratioH, marginPx) {
+function gridMaker_applyBatchToSelectedClips(cellsJson, ratioW, ratioH, marginPx, roundnessPct) {
     var debugLines = [];
     function dbg(message) {
         _gridMaker_debugPush(debugLines, message);
     }
 
     try {
-        dbg("INPUT batch ratio=" + ratioW + ":" + ratioH + " marginPx=" + marginPx);
+        dbg("INPUT batch ratio=" + ratioW + ":" + ratioH + " marginPx=" + marginPx + " roundnessPct=" + roundnessPct);
         app.enableQE();
         dbg("QE enabled");
 
@@ -823,6 +851,7 @@ function gridMaker_applyBatchToSelectedClips(cellsJson, ratioW, ratioH, marginPx
         ratioW = parseFloat(ratioW);
         ratioH = parseFloat(ratioH);
         marginPx = _gridMaker_parseMarginPx(marginPx);
+        roundnessPct = _gridMaker_parseRoundnessPercent(roundnessPct);
         if (!(ratioW > 0) || !(ratioH > 0)) {
             dbg("Invalid ratio");
             return _gridMaker_result("ERR", "invalid_ratio", null, debugLines);
@@ -882,6 +911,7 @@ function gridMaker_applyBatchToSelectedClips(cellsJson, ratioW, ratioH, marginPx
                 ratioW,
                 ratioH,
                 marginPx,
+                roundnessPct,
                 debugLines
             );
 
@@ -1000,7 +1030,7 @@ function _gridMaker_sortClipsBottomToTop(seq, clips) {
 }
 
 // Shared clip placement for batch mode (same placement rules as single custom cells).
-function _gridMaker_applyNormalizedCellToClip(clip, seq, leftNorm, topNorm, widthNorm, heightNorm, ratioW, ratioH, marginPx, debugLines) {
+function _gridMaker_applyNormalizedCellToClip(clip, seq, leftNorm, topNorm, widthNorm, heightNorm, ratioW, ratioH, marginPx, roundnessPct, debugLines) {
     var qSeq = null;
     var qClip = null;
 
@@ -1022,10 +1052,14 @@ function _gridMaker_applyNormalizedCellToClip(clip, seq, leftNorm, topNorm, widt
         _gridMaker_debugPush(debugLines, "QE sequence unavailable (non-blocking unless effect ensure is required)");
     }
 
+    // Prefer Rounded Crop on supported hosts, with safe fallback to classic Crop.
+    var preferRoundedCrop = _gridMaker_supportsRoundedCropEffect();
+    _gridMaker_debugPush(debugLines, "Rounded Crop supported=" + preferRoundedCrop);
+
     var transformComp = _gridMaker_findManagedTransformComponent(clip);
     var motionComp = _gridMaker_findMotionComponent(clip);
     var placementComp = motionComp;
-    var cropComp = _gridMaker_findManagedCropComponent(clip);
+    var cropComp = _gridMaker_findManagedCropComponent(clip, preferRoundedCrop);
     _gridMaker_debugPush(debugLines, "Components pre-check placement=" + _gridMaker_componentLabel(placementComp) + " transform=" + _gridMaker_componentLabel(transformComp) + " motion=" + _gridMaker_componentLabel(motionComp) + " crop=" + _gridMaker_componentLabel(cropComp));
     _gridMaker_dumpPlacementComponents(clip, debugLines, "BEFORE");
 
@@ -1059,11 +1093,10 @@ function _gridMaker_applyNormalizedCellToClip(clip, seq, leftNorm, topNorm, widt
         }
 
         if (!cropComp) {
-            cropComp = _gridMaker_ensureManagedEffect(
+            cropComp = _gridMaker_ensureManagedCropComponent(
                 clip,
                 qClip,
-                "crop",
-                _gridMaker_cropEffectLookupNames(),
+                preferRoundedCrop,
                 debugLines
             );
             _gridMaker_debugPush(debugLines, "Crop component after ensure=" + _gridMaker_componentLabel(cropComp));
@@ -1207,6 +1240,7 @@ function _gridMaker_applyNormalizedCellToClip(clip, seq, leftNorm, topNorm, widt
     var cropRequired = (cropL > 0.0001 || cropR > 0.0001 || cropT > 0.0001 || cropB > 0.0001);
     if (cropComp) {
         _gridMaker_setCrop(cropComp, cropL, cropR, cropT, cropB);
+        _gridMaker_setCropRoundness(cropComp, roundnessPct, debugLines);
     } else if (cropRequired) {
         _gridMaker_debugPush(debugLines, "Crop component unavailable and crop required");
         return { ok: false, code: "crop_effect_unavailable" };
@@ -1551,8 +1585,59 @@ function _gridMaker_findManagedTransformComponent(clip) {
     return _gridMaker_findManagedEffectComponent(clip, "transform");
 }
 
-function _gridMaker_findManagedCropComponent(clip) {
-    return _gridMaker_findManagedEffectComponent(clip, "crop");
+function _gridMaker_findManagedCropComponent(clip, preferRounded) {
+    var list = _gridMaker_getTypeComponents(clip, "crop");
+    if (!list || list.length < 1) {
+        return null;
+    }
+
+    // When Rounded Crop is supported, always prioritize that effect variant.
+    if (preferRounded) {
+        for (var i = list.length - 1; i >= 0; i--) {
+            if (_gridMaker_isRoundedCropComponent(list[i])) {
+                return list[i];
+            }
+        }
+    }
+
+    // Keep the previous deterministic pick for non-rounded hosts.
+    return list[list.length - 1];
+}
+
+// Ensure a managed crop component, preferring Rounded Crop on newer Premiere hosts.
+function _gridMaker_ensureManagedCropComponent(clip, qClip, preferRounded, debugLines) {
+    var existingPreferred = _gridMaker_findManagedCropComponent(clip, preferRounded);
+    if (existingPreferred) {
+        _gridMaker_debugPush(debugLines, "crop managed component found: " + _gridMaker_componentLabel(existingPreferred));
+        return existingPreferred;
+    }
+
+    var existingAny = _gridMaker_findManagedCropComponent(clip, false);
+    if (preferRounded && existingAny && !_gridMaker_isRoundedCropComponent(existingAny)) {
+        _gridMaker_debugPush(debugLines, "Rounded Crop preferred; attempting rounded-only insertion");
+        var ensuredRounded = _gridMaker_ensureManagedEffect(
+            clip,
+            qClip,
+            "crop",
+            _gridMaker_roundedCropEffectLookupNames(),
+            debugLines,
+            true
+        );
+        if (ensuredRounded && _gridMaker_isRoundedCropComponent(ensuredRounded)) {
+            return ensuredRounded;
+        }
+        _gridMaker_debugPush(debugLines, "Rounded Crop unavailable; falling back to existing classic Crop");
+        return existingAny;
+    }
+
+    return _gridMaker_ensureManagedEffect(
+        clip,
+        qClip,
+        "crop",
+        _gridMaker_cropEffectLookupNames(preferRounded),
+        debugLines,
+        false
+    );
 }
 
 function _gridMaker_sleepSafe(ms) {
@@ -1588,16 +1673,20 @@ function _gridMaker_waitForManagedEffect(clip, type, attempts, sleepMs, debugLin
     return null;
 }
 
-function _gridMaker_ensureManagedEffect(clip, qClip, type, lookupNames, debugLines) {
+function _gridMaker_ensureManagedEffect(clip, qClip, type, lookupNames, debugLines, forceInsert) {
     var byTypeNow = _gridMaker_getTypeComponents(clip, type);
     if (byTypeNow.length > 1) {
         _gridMaker_debugPush(debugLines, type + " duplicates detected before ensure=" + byTypeNow.length + " (will reuse existing, no new insert)");
     }
 
+    var shouldForceInsert = !!forceInsert;
     var existing = _gridMaker_findManagedEffectComponent(clip, type);
-    if (existing) {
+    if (existing && !shouldForceInsert) {
         _gridMaker_debugPush(debugLines, type + " managed component found: " + _gridMaker_componentLabel(existing));
         return existing;
+    }
+    if (existing && shouldForceInsert) {
+        _gridMaker_debugPush(debugLines, type + " forceInsert enabled; attempting insertion despite existing component=" + _gridMaker_componentLabel(existing));
     }
 
     var beforeType = byTypeNow;
@@ -1712,6 +1801,60 @@ function _gridMaker_cropLabelBase() {
     return "Crop";
 }
 
+function _gridMaker_getHostVersionString() {
+    try {
+        if (app && app.version !== undefined && app.version !== null) {
+            return String(app.version);
+        }
+    } catch (e1) {}
+    return "";
+}
+
+function _gridMaker_parseVersionTuple(rawVersion) {
+    var text = String(rawVersion || "");
+    var m = /([0-9]+)(?:\.([0-9]+))?/.exec(text);
+    if (!m) {
+        return null;
+    }
+    var major = parseInt(m[1], 10);
+    var minor = parseInt(m[2] || "0", 10);
+    if (isNaN(major) || isNaN(minor)) {
+        return null;
+    }
+    return { major: major, minor: minor };
+}
+
+function _gridMaker_supportsRoundedCropEffect() {
+    // Rounded Crop exists from Premiere Pro 25.5+.
+    var tuple = _gridMaker_parseVersionTuple(_gridMaker_getHostVersionString());
+    if (!tuple) {
+        return false;
+    }
+    if (tuple.major > 25) {
+        return true;
+    }
+    if (tuple.major < 25) {
+        return false;
+    }
+    return tuple.minor >= 5;
+}
+
+function _gridMaker_isRoundedCropComponent(component) {
+    if (!component) {
+        return false;
+    }
+    var displayName = "";
+    var matchName = "";
+    try {
+        displayName = component.displayName ? component.displayName.toLowerCase() : "";
+    } catch (e1) {}
+    try {
+        matchName = component.matchName ? component.matchName.toLowerCase() : "";
+    } catch (e2) {}
+
+    return _gridMaker_containsAny(displayName, ["rounded crop"]) || _gridMaker_containsAny(matchName, ["ae.impact_crop_fx", "impact_crop_fx"]);
+}
+
 function _gridMaker_defaultLabelForType(type) {
     if (type === "transform") {
         return _gridMaker_transformLabelBase();
@@ -1765,8 +1908,8 @@ function _gridMaker_componentMatchesType(component, type) {
         var cropScore = _gridMaker_componentMatchScore(
             displayName,
             matchName,
-            ["crop", "recadr", "recortar", "ritagli", "freistell"],
-            ["adbe crop", "adbe aecrop", "ae.adbe crop", "ae.adbe aecrop"]
+            ["crop", "rounded crop", "recadr", "recortar", "ritagli", "freistell"],
+            ["adbe crop", "adbe aecrop", "ae.adbe crop", "ae.adbe aecrop", "ae.impact_crop_fx", "impact_crop_fx"]
         );
         if (cropScore >= 0) {
             return true;
@@ -2025,7 +2168,7 @@ function _gridMaker_qeComponentMatchesType(component, type) {
         return _gridMaker_containsAny(matchName, ["adbe geometry", "adbe transform"]) || _gridMaker_containsAny(name, ["transform", "transformation", "trasform"]);
     }
     if (type === "crop") {
-        return _gridMaker_containsAny(matchName, ["adbe crop", "adbe aecrop"]) || _gridMaker_containsAny(name, ["crop", "recadr", "recortar", "ritagli"]);
+        return _gridMaker_containsAny(matchName, ["adbe crop", "adbe aecrop", "ae.impact_crop_fx", "impact_crop_fx"]) || _gridMaker_containsAny(name, ["crop", "rounded crop", "recadr", "recortar", "ritagli"]);
     }
     return false;
 }
@@ -2343,7 +2486,15 @@ function _gridMaker_transformEffectLookupNames() {
     ];
 }
 
-function _gridMaker_cropEffectLookupNames() {
+function _gridMaker_roundedCropEffectLookupNames() {
+    return [
+        "Rounded Crop",
+        "AE.Impact_Crop_FX",
+        "Impact Crop"
+    ];
+}
+
+function _gridMaker_classicCropEffectLookupNames() {
     return [
         "Crop",
         "Recorte",
@@ -2355,6 +2506,16 @@ function _gridMaker_cropEffectLookupNames() {
         "AE.ADBE Crop",
         "AE.ADBE AECrop"
     ];
+}
+
+function _gridMaker_cropEffectLookupNames(preferRounded) {
+    var useRounded = (preferRounded === true) || (preferRounded === undefined && _gridMaker_supportsRoundedCropEffect());
+    if (!useRounded) {
+        return _gridMaker_classicCropEffectLookupNames();
+    }
+
+    // Prefer Rounded Crop first, then fallback to classic Crop in case lookup fails.
+    return _gridMaker_roundedCropEffectLookupNames().concat(_gridMaker_classicCropEffectLookupNames());
 }
 
 function _gridMaker_findTransformComponent(clip) {
@@ -2378,8 +2539,8 @@ function _gridMaker_findMotionComponent(clip) {
 function _gridMaker_findCropComponent(clip) {
     return _gridMaker_findComponentByHints(
         clip,
-        ["crop", "recadr", "recortar", "recorte", "ritagli", "freistell"],
-        ["adbe crop", "ae.adbe crop"],
+        ["crop", "rounded crop", "recadr", "recortar", "recorte", "ritagli", "freistell"],
+        ["adbe crop", "ae.adbe crop", "ae.impact_crop_fx", "impact_crop_fx"],
         false
     );
 }
@@ -3108,6 +3269,18 @@ function _gridMaker_parseMarginPx(rawMargin) {
     return margin;
 }
 
+// Parse and clamp roundness percentage from UI payload.
+function _gridMaker_parseRoundnessPercent(rawRoundness) {
+    var value = _gridMaker_toNumber(rawRoundness);
+    if (!_gridMaker_isFiniteNumber(value) || value < 0) {
+        return 0;
+    }
+    if (value > 100) {
+        value = 100;
+    }
+    return value;
+}
+
 // Compute final cell rectangle with a single slider controlling outer margin + inter-cell gap.
 function _gridMaker_computePaddedCellRect(frameW, frameH, leftNorm, topNorm, widthNorm, heightNorm, marginPx, debugLines) {
     if (!(frameW > 0) || !(frameH > 0)) {
@@ -3255,6 +3428,55 @@ function _gridMaker_setCrop(component, left, right, top, bottom) {
         try {
             pBottom.setValue(bottom, true);
         } catch (e4) {}
+    }
+}
+
+function _gridMaker_findCropRoundnessProperty(component) {
+    return _gridMaker_findProperty(component, [
+        "roundness",
+        "arrondi",
+        "redondez",
+        "abrundung",
+        "arredondamento",
+        "arrotondamento",
+        "roundness top left",
+        "arrondi coin haut gauche"
+    ], "number");
+}
+
+// Apply Rounded Crop roundness when the property exists. No-op on classic Crop.
+function _gridMaker_setCropRoundness(component, roundnessPct, debugLines) {
+    if (!component || !_gridMaker_componentMatchesType(component, "crop")) {
+        return;
+    }
+
+    var target = _gridMaker_parseRoundnessPercent(roundnessPct);
+    var roundnessProp = _gridMaker_findCropRoundnessProperty(component);
+    if (!roundnessProp) {
+        _gridMaker_debugPush(debugLines, "Roundness property not found on crop component; skipping");
+        return;
+    }
+
+    _gridMaker_disableTimeVarying(roundnessProp);
+    var ok = _gridMaker_trySetNumberProperty(roundnessProp, target, debugLines, "crop.roundness");
+    if (!ok) {
+        _gridMaker_debugPush(debugLines, "Roundness write failed");
+        return;
+    }
+
+    // Mirror corner roundness controls when available so the effect stays uniformly rounded.
+    var cornerProps = [
+        _gridMaker_findProperty(component, ["roundness top left"], "number"),
+        _gridMaker_findProperty(component, ["roundness top right"], "number"),
+        _gridMaker_findProperty(component, ["roundness bottom left"], "number"),
+        _gridMaker_findProperty(component, ["roundness bottom right"], "number")
+    ];
+    for (var i = 0; i < cornerProps.length; i++) {
+        if (!cornerProps[i]) {
+            continue;
+        }
+        _gridMaker_disableTimeVarying(cornerProps[i]);
+        _gridMaker_trySetNumberProperty(cornerProps[i], target, debugLines, "crop.roundness.corner#" + (i + 1));
     }
 }
 
@@ -3558,6 +3780,8 @@ function gridMaker_designerListConfigs(ratioW, ratioH) {
                 ratioH: cfg.ratioH,
                 // Return per-config margin so UI can restore spacing when loading presets.
                 marginPx: _gridMaker_parseMarginPx(cfg.marginPx),
+                // Return per-config roundness so UI can restore rounded crop value with each preset.
+                roundness: _gridMaker_parseRoundnessPercent(cfg.roundness),
                 blocks: cfg.blocks || [],
                 updatedAt: cfg.updatedAt || ""
             });
@@ -3598,6 +3822,7 @@ function gridMaker_designerSaveConfig(payloadJson) {
         var id = _gridMaker_designerSanitizeId(payload.id);
         var ratioKey = _gridMaker_designerRatioKey(ratioW, ratioH);
         var marginPx = _gridMaker_parseMarginPx(payload.marginPx);
+        var roundness = _gridMaker_parseRoundnessPercent(payload.roundness);
         var now = (new Date()).toISOString ? (new Date()).toISOString() : String(new Date().getTime());
         var name = String(payload.name || "").replace(/^\s+|\s+$/g, "");
         if (!name) {
@@ -3613,6 +3838,7 @@ function gridMaker_designerSaveConfig(payloadJson) {
                 store.configs[i].ratioH = ratioH;
                 store.configs[i].ratioKey = ratioKey;
                 store.configs[i].marginPx = marginPx;
+                store.configs[i].roundness = roundness;
                 store.configs[i].blocks = blocks;
                 store.configs[i].updatedAt = now;
                 found = true;
@@ -3627,6 +3853,7 @@ function gridMaker_designerSaveConfig(payloadJson) {
                 ratioH: ratioH,
                 ratioKey: ratioKey,
                 marginPx: marginPx,
+                roundness: roundness,
                 blocks: blocks,
                 createdAt: now,
                 updatedAt: now
@@ -3754,6 +3981,8 @@ function gridMaker_designerImportConfigs() {
                 ratioKey: _gridMaker_designerRatioKey(ratioW, ratioH),
                 // Keep per-config spacing during import/export cycles.
                 marginPx: _gridMaker_parseMarginPx(cfg.marginPx),
+                // Keep per-config roundness during import/export cycles.
+                roundness: _gridMaker_parseRoundnessPercent(cfg.roundness),
                 blocks: blocks,
                 createdAt: String(cfg.createdAt || now),
                 updatedAt: now

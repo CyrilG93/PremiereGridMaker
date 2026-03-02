@@ -12,6 +12,7 @@
       "label.cols": "Columns (width)",
       "label.ratio": "Target source ratio",
       "label.margin": "Global margin (px)",
+      "label.roundness": "Roundness (%)",
       "label.preview": "Preview",
       "label.debug": "Debug",
       "action.copyDebug": "Copy",

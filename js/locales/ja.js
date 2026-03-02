@@ -11,6 +11,7 @@
       "label.rows": "行 (高さ)",
       "label.cols": "列 (幅)",
       "label.ratio": "ターゲット比率",
+      "label.roundness": "角丸 (%)",
       "label.preview": "プレビュー",
       "label.debug": "デバッグ",
       "action.copyDebug": "コピー",

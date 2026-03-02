@@ -12,6 +12,7 @@
       "label.cols": "Colonnes (largeur)",
       "label.ratio": "Ratio cible de la source",
       "label.margin": "Marge globale (px)",
+      "label.roundness": "Arrondi (%)",
       "label.preview": "Apercu",
       "label.debug": "Debug",
       "action.copyDebug": "Copier",

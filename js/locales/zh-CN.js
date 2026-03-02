@@ -11,6 +11,7 @@
       "label.rows": "行 (高度)",
       "label.cols": "列 (宽度)",
       "label.ratio": "目标素材比例",
+      "label.roundness": "圆角 (%)",
       "label.preview": "预览",
       "label.debug": "调试",
       "action.copyDebug": "复制",

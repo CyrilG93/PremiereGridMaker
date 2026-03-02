@@ -21,8 +21,15 @@
     ratioW: 16,
     ratioH: 9,
     marginPx: resolveInitialMarginPx(),
+    roundness: resolveInitialRoundness(),
     selectedCell: { row: 0, col: 0 },
     locale: resolveInitialLocale(),
+    hostCaps: {
+      // Rounded Crop is enabled dynamically from host capabilities.
+      supportsRoundedCrop: false,
+      hostVersion: "",
+      loaded: false
+    },
     designer: {
       enabled: false,
       editMode: false,
@@ -65,6 +72,9 @@
   var ratio = document.getElementById("ratio");
   var marginRange = document.getElementById("marginRange");
   var marginNumber = document.getElementById("marginNumber");
+  var roundnessControl = document.getElementById("roundnessControl");
+  var roundnessRange = document.getElementById("roundnessRange");
+  var roundnessNumber = document.getElementById("roundnessNumber");
   var summary = document.getElementById("summary");
   var gridStage = document.getElementById("gridStage");
   var grid = document.getElementById("gridPreview");
@@ -189,6 +199,24 @@
       return fallback;
     }
     return clampInt(parsed, 0, 200, fallback);
+  }
+
+  // Load the rounded-corner percentage used when Rounded Crop is available.
+  function resolveInitialRoundness() {
+    var fallback = 0;
+    var stored = null;
+
+    try {
+      stored = window.localStorage.getItem("pgm.roundness");
+    } catch (e1) {
+      stored = null;
+    }
+
+    var parsed = parseInt(stored, 10);
+    if (isNaN(parsed)) {
+      return fallback;
+    }
+    return clampInt(parsed, 0, 100, fallback);
   }
 
   function getLocaleStrings() {
@@ -583,6 +611,36 @@
     } catch (e1) {
       // Ignore localStorage issues in CEP hosts.
     }
+  }
+
+  // Persist and normalize rounded-corner percentage for Rounded Crop (0..100).
+  function applyGlobalRoundness(nextRoundness, persist) {
+    var roundness = clampInt(nextRoundness, 0, 100, 0);
+    state.roundness = roundness;
+
+    if (roundnessRange) {
+      roundnessRange.value = String(roundness);
+    }
+    if (roundnessNumber) {
+      roundnessNumber.value = String(roundness);
+    }
+
+    if (!persist) {
+      return;
+    }
+    try {
+      window.localStorage.setItem("pgm.roundness", String(roundness));
+    } catch (e1) {
+      // Ignore localStorage issues in CEP hosts.
+    }
+  }
+
+  // Only send roundness when the host confirms Rounded Crop support.
+  function getEffectiveRoundness() {
+    if (!state.hostCaps.supportsRoundedCrop) {
+      return 0;
+    }
+    return clampInt(state.roundness, 0, 100, 0);
   }
 
   function syncValue(inputA, inputB, callback) {
@@ -1131,15 +1189,17 @@
       return;
     }
 
+    var effectiveRoundness = getEffectiveRoundness();
     var script = "gridMaker_applyBatchToSelectedClips(" +
       quoteForEvalScript(JSON.stringify(cells)) + "," +
       state.ratioW + "," +
       state.ratioH + "," +
-      state.marginPx +
+      state.marginPx + "," +
+      effectiveRoundness +
       ")";
 
-    appendDebug("UI> batch click cells=" + cells.length + " ratio=" + getRatioText() + " marginPx=" + state.marginPx);
-    appendDebug("UI> evalScript: gridMaker_applyBatchToSelectedClips(<cells>," + state.ratioW + "," + state.ratioH + "," + state.marginPx + ")");
+    appendDebug("UI> batch click cells=" + cells.length + " ratio=" + getRatioText() + " marginPx=" + state.marginPx + " roundness=" + effectiveRoundness);
+    appendDebug("UI> evalScript: gridMaker_applyBatchToSelectedClips(<cells>," + state.ratioW + "," + state.ratioH + "," + state.marginPx + "," + effectiveRoundness + ")");
     setStatusKey("status.batch_applying", {}, "");
 
     enqueueApplyRequest({
@@ -1209,6 +1269,7 @@
     state.selectedCell = { row: row, col: col };
     renderPreview();
 
+    var effectiveRoundness = getEffectiveRoundness();
     var script = "gridMaker_applyToSelectedClip(" +
       row + "," +
       col + "," +
@@ -1216,10 +1277,11 @@
       state.cols + "," +
       state.ratioW + "," +
       state.ratioH + "," +
-      state.marginPx +
+      state.marginPx + "," +
+      effectiveRoundness +
       ")";
 
-    appendDebug("UI> click cell row=" + (row + 1) + " col=" + (col + 1) + " grid=" + state.rows + "x" + state.cols + " ratio=" + getRatioText() + " marginPx=" + state.marginPx);
+    appendDebug("UI> click cell row=" + (row + 1) + " col=" + (col + 1) + " grid=" + state.rows + "x" + state.cols + " ratio=" + getRatioText() + " marginPx=" + state.marginPx + " roundness=" + effectiveRoundness);
     appendDebug("UI> evalScript: " + script);
     setStatusKey("status.applying", {}, "");
 
@@ -1259,6 +1321,7 @@
     var widthNorm = formatPercent(block.w / DESIGNER_GRID_SIZE);
     var heightNorm = formatPercent(block.h / DESIGNER_GRID_SIZE);
 
+    var effectiveRoundness = getEffectiveRoundness();
     var script = "gridMaker_applyToSelectedCustomCell(" +
       leftNorm + "," +
       topNorm + "," +
@@ -1266,10 +1329,11 @@
       heightNorm + "," +
       state.ratioW + "," +
       state.ratioH + "," +
-      state.marginPx +
+      state.marginPx + "," +
+      effectiveRoundness +
       ")";
 
-    appendDebug("UI> click designer cell id=" + block.id + " x=" + block.x + " y=" + block.y + " w=" + block.w + " h=" + block.h + " ratio=" + getRatioText() + " marginPx=" + state.marginPx);
+    appendDebug("UI> click designer cell id=" + block.id + " x=" + block.x + " y=" + block.y + " w=" + block.w + " h=" + block.h + " ratio=" + getRatioText() + " marginPx=" + state.marginPx + " roundness=" + effectiveRoundness);
     appendDebug("UI> evalScript: " + script);
     setStatusKey("status.applying", {}, "");
 
@@ -1709,6 +1773,8 @@
         adoptDesignerBlocks(list[i].blocks || []);
         // Restore the config-specific global margin when this preset is loaded.
         applyGlobalMarginPx(list[i].marginPx, false);
+        // Restore per-config roundness so rounded crop layouts remain consistent.
+        applyGlobalRoundness(list[i].roundness, false);
         if (designerNameInput) {
           designerNameInput.value = list[i].name || "";
         }
@@ -1756,6 +1822,8 @@
       }
       // Keep margin bound to the active designer config for deterministic recalls.
       applyGlobalMarginPx(found.marginPx, false);
+      // Keep roundness bound to the active designer config for deterministic recalls.
+      applyGlobalRoundness(found.roundness, false);
     }
 
     renderPreview();
@@ -1784,6 +1852,7 @@
           ratioW: cfg.ratioW,
           ratioH: cfg.ratioH,
           marginPx: clampInt(cfg.marginPx, 0, 200, state.marginPx),
+          roundness: clampInt(cfg.roundness, 0, 100, state.roundness),
           blocks: cloneDesignerBlocks(cfg.blocks || []),
           updatedAt: String(cfg.updatedAt || "")
         });
@@ -1811,6 +1880,8 @@
       ratioH: state.ratioH,
       // Persist margin with each designer config so recalling a preset restores spacing.
       marginPx: state.marginPx,
+      // Persist roundness with each designer config for Rounded Crop compatible hosts.
+      roundness: state.roundness,
       blocks: cloneDesignerBlocks(state.designer.blocks)
     };
 
@@ -2116,6 +2187,42 @@
     refreshUpdateBanner();
   }
 
+  // Show/hide roundness controls depending on host Rounded Crop support.
+  function renderRoundnessControl() {
+    if (!roundnessControl) {
+      return;
+    }
+    var show = !!state.hostCaps.supportsRoundedCrop;
+    roundnessControl.hidden = !show;
+    roundnessControl.style.display = show ? "" : "none";
+  }
+
+  // Query host capabilities once at startup so UI can adapt to Premiere version features.
+  function loadHostCapabilities() {
+    appendDebug("HOSTCAPS> probing host capabilities");
+    callHost("gridMaker_getHostCapabilities()", function (result) {
+      appendDebug("HOST< raw(capabilities): " + (result || "<empty>"));
+      var payload = parseJsonSafe(result);
+      if (!payload || !payload.ok) {
+        state.hostCaps.supportsRoundedCrop = false;
+        state.hostCaps.hostVersion = "";
+        state.hostCaps.loaded = true;
+        renderRoundnessControl();
+        appendDebug("HOSTCAPS> fallback: Rounded Crop disabled (capability probe failed)");
+        return;
+      }
+
+      state.hostCaps.supportsRoundedCrop = !!payload.supportsRoundedCrop;
+      state.hostCaps.hostVersion = String(payload.hostVersion || "");
+      state.hostCaps.loaded = true;
+      renderRoundnessControl();
+      appendDebug(
+        "HOSTCAPS> hostVersion=" + state.hostCaps.hostVersion +
+        " supportsRoundedCrop=" + state.hostCaps.supportsRoundedCrop
+      );
+    });
+  }
+
   // Event wiring: input sync, panel toggles, designer commands and clipboard copy.
   syncValue(rowsRange, rowsNumber, function (v) {
     state.rows = v;
@@ -2154,6 +2261,19 @@
     marginRange.addEventListener("input", function () {
       applyGlobalMarginPx(marginRange.value, true);
       appendDebug("UI> margin changed to " + state.marginPx + "px");
+    });
+  }
+
+  if (roundnessRange && roundnessNumber) {
+    // Mirror margin UX: synced range + numeric input for precise roundness control.
+    syncValue(roundnessRange, roundnessNumber, function (v) {
+      applyGlobalRoundness(v, true);
+      appendDebug("UI> roundness changed to " + state.roundness + "%");
+    });
+  } else if (roundnessRange) {
+    roundnessRange.addEventListener("input", function () {
+      applyGlobalRoundness(roundnessRange.value, true);
+      appendDebug("UI> roundness changed to " + state.roundness + "%");
     });
   }
 
@@ -2382,6 +2502,8 @@
   // Initial boot sequence for UI state, i18n, preview and update check.
   applyDesignerGallerySize(state.designer.gallerySize, false);
   applyGlobalMarginPx(state.marginPx, false);
+  applyGlobalRoundness(state.roundness, false);
+  renderRoundnessControl();
   if (classicGridControls) {
     classicGridControls.style.display = "";
   }
@@ -2402,5 +2524,6 @@
   setLocale(state.locale);
   setStatusKey("status.ready", {}, "");
   appendDebug("INIT> panel ready");
+  loadHostCapabilities();
   checkForUpdates();
 })();
