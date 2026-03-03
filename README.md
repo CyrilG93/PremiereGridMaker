@@ -190,6 +190,7 @@ Then include it in `index.html` before `js/main.js`.
 - Refined config actions responsive layout to use a deterministic two-row pattern (`New/Name/Save`, then `Import/Export`) before list mode.
 - Hardened small-panel layout so Preview stays contained and Debug remains stacked below without overlap.
 - Added a compact spacing mode for top controls in Designer mode (ratio, margin/roundness, batch) to reduce vertical footprint.
+- Completed `Global margin` localization (`label.margin`) across all supported non-English locales.
 
 ### v1.2.6
 

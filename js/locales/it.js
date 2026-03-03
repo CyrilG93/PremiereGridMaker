@@ -11,6 +11,7 @@
       "label.rows": "Righe (altezza)",
       "label.cols": "Colonne (larghezza)",
       "label.ratio": "Rapporto sorgente obiettivo",
+      "label.margin": "Margine globale (px)",
       "label.roundness": "Arrotondamento (%)",
       "label.preview": "Anteprima",
       "label.debug": "Debug",

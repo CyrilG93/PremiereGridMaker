@@ -11,6 +11,7 @@
       "label.rows": "Zeilen (Hohe)",
       "label.cols": "Spalten (Breite)",
       "label.ratio": "Ziel-Seitenverhaltnis",
+      "label.margin": "Globaler Abstand (px)",
       "label.roundness": "Rundung (%)",
       "label.preview": "Vorschau",
       "label.debug": "Debug",

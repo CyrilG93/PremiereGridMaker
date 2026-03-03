@@ -11,6 +11,7 @@
       "label.rows": "Строки (высота)",
       "label.cols": "Столбцы (ширина)",
       "label.ratio": "Целевое соотношение",
+      "label.margin": "Глобальный отступ (px)",
       "label.roundness": "Скругление (%)",
       "label.preview": "Предпросмотр",
       "label.debug": "Отладка",
