@@ -16,6 +16,7 @@ Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 - Grid Designer mode (10x10 canvas): irregular layouts with draggable/resizable blocks
 - Create a Designer block from the currently selected clip visual state (Motion Position/Scale + Crop)
 - Designer presets per ratio, saved locally with gallery preview and quick load/delete
+- Designer preset gallery supports drag & drop ordering (order is persisted and no longer reset on save)
 - Designer presets also store their own Global Margin value
 - Designer preset import/export in JSON (team sharing + backup)
 - UI localization: English (default), French, Spanish, German, Portuguese (Brazil), Japanese, Italian, Chinese (Simplified), Russian
@@ -183,6 +184,9 @@ Then include it in `index.html` before `js/main.js`.
   - classic `Crop` fallback on older/non-compatible hosts.
 - Added global `Roundness` slider (`0..100%`) for both classic and designer apply flows.
 - Added `roundness` persistence in designer preset save/load/import/export.
+- Added drag & drop reordering of Designer preset previews, with persistent order per ratio.
+- Updated Designer controls responsive behavior to keep the config action row on one line longer before switching to multi-line layout.
+- Hardened small-panel layout so Preview stays contained and Debug remains stacked below without overlap.
 
 ### v1.2.6
 

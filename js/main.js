@@ -108,6 +108,9 @@
   var applyBatchBtn = document.getElementById("applyBatchBtn");
 
   var designerDrag = null;
+  // Track gallery drag state so preset cards can be reordered by drag & drop.
+  var designerGalleryDragId = "";
+  var designerGalleryClickSuppressUntil = 0;
 
   // Debug helpers: timestamped logs in the collapsible debug panel.
   function getClockStamp() {
@@ -912,6 +915,16 @@
 
     var stageWidth = gridStage.clientWidth;
     var stageHeight = gridStage.clientHeight;
+    // Use the stage inner box (without padding) so preview never overflows the panel area.
+    var stageStyle = window.getComputedStyle ? window.getComputedStyle(gridStage) : null;
+    var stagePadX = 0;
+    var stagePadY = 0;
+    if (stageStyle) {
+      stagePadX = (parseFloat(stageStyle.paddingLeft) || 0) + (parseFloat(stageStyle.paddingRight) || 0);
+      stagePadY = (parseFloat(stageStyle.paddingTop) || 0) + (parseFloat(stageStyle.paddingBottom) || 0);
+    }
+    stageWidth -= stagePadX;
+    stageHeight -= stagePadY;
     if (!(stageWidth > 0) || !(stageHeight > 0)) {
       return;
     }
@@ -1666,6 +1679,40 @@
 
     designerGallery.innerHTML = "";
     var configs = state.designer.configs || [];
+    // Allow dropping on empty gallery space to send a dragged card to the end of the list.
+    designerGallery.ondragover = function (event) {
+      if (!designerGalleryDragId) {
+        return;
+      }
+      event.preventDefault();
+      if (event && event.dataTransfer) {
+        event.dataTransfer.dropEffect = "move";
+      }
+    };
+    designerGallery.ondrop = function (event) {
+      if (!designerGalleryDragId) {
+        return;
+      }
+      event.preventDefault();
+      var fromIndex = findDesignerConfigIndexById(designerGalleryDragId);
+      if (fromIndex < 0) {
+        designerGalleryDragId = "";
+        return;
+      }
+      var next = (state.designer.configs || []).slice();
+      var moved = next.splice(fromIndex, 1)[0];
+      if (!moved) {
+        designerGalleryDragId = "";
+        return;
+      }
+      next.push(moved);
+      state.designer.configs = next;
+      designerGalleryClickSuppressUntil = Date.now() + 250;
+      appendDebug("UI> designer configs reordered drag=" + designerGalleryDragId + " to=end");
+      designerGalleryDragId = "";
+      persistDesignerConfigOrder();
+      renderPreview();
+    };
 
     if (!configs.length) {
       var empty = document.createElement("div");
@@ -1680,6 +1727,8 @@
         var item = document.createElement("button");
         item.type = "button";
         item.className = "designer-gallery-item";
+        item.draggable = configs.length > 1;
+        item.setAttribute("data-config-id", cfg.id);
         if (cfg.id === state.designer.activeConfigId) {
           item.className += " active";
         }
@@ -1717,12 +1766,67 @@
         item.appendChild(meta);
 
         item.addEventListener("click", function () {
+          // Ignore click emitted right after a completed drag/drop reorder gesture.
+          if (Date.now() < designerGalleryClickSuppressUntil) {
+            return;
+          }
           loadDesignerConfig(cfg.id);
         });
 
         item.addEventListener("contextmenu", function (event) {
           event.preventDefault();
           deleteDesignerConfig(cfg.id, cfg.name || cfg.id);
+        });
+
+        item.addEventListener("dragstart", function (event) {
+          designerGalleryDragId = cfg.id;
+          item.classList.add("dragging");
+          if (event && event.dataTransfer) {
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("text/plain", String(cfg.id));
+          }
+        });
+
+        item.addEventListener("dragover", function (event) {
+          if (!designerGalleryDragId || designerGalleryDragId === cfg.id) {
+            return;
+          }
+          event.preventDefault();
+          if (event && event.dataTransfer) {
+            event.dataTransfer.dropEffect = "move";
+          }
+          item.classList.add("drag-over");
+        });
+
+        item.addEventListener("dragleave", function () {
+          item.classList.remove("drag-over");
+        });
+
+        item.addEventListener("drop", function (event) {
+          if (!designerGalleryDragId || designerGalleryDragId === cfg.id) {
+            return;
+          }
+          event.preventDefault();
+          event.stopPropagation();
+          item.classList.remove("drag-over");
+          // Reorder locally first for immediate visual feedback, then persist to host storage.
+          if (reorderDesignerConfigList(designerGalleryDragId, cfg.id)) {
+            designerGalleryClickSuppressUntil = Date.now() + 250;
+            appendDebug("UI> designer configs reordered drag=" + designerGalleryDragId + " before=" + cfg.id);
+            persistDesignerConfigOrder();
+            renderPreview();
+          }
+          designerGalleryDragId = "";
+        });
+
+        item.addEventListener("dragend", function () {
+          designerGalleryDragId = "";
+          item.classList.remove("dragging");
+          item.classList.remove("drag-over");
+          var cards = designerGallery ? designerGallery.querySelectorAll(".designer-gallery-item.drag-over") : [];
+          for (var ci = 0; ci < cards.length; ci += 1) {
+            cards[ci].classList.remove("drag-over");
+          }
         });
 
         designerGallery.appendChild(item);
@@ -1784,6 +1888,67 @@
         return;
       }
     }
+  }
+
+  function findDesignerConfigIndexById(configId) {
+    if (!configId) {
+      return -1;
+    }
+    var list = state.designer.configs || [];
+    for (var i = 0; i < list.length; i += 1) {
+      if (list[i] && list[i].id === configId) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  // Reorder local preset cards in memory so UI feedback is immediate during drag/drop.
+  function reorderDesignerConfigList(dragId, targetId) {
+    var fromIndex = findDesignerConfigIndexById(dragId);
+    var toIndex = findDesignerConfigIndexById(targetId);
+    if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) {
+      return false;
+    }
+    var next = (state.designer.configs || []).slice();
+    var moved = next.splice(fromIndex, 1)[0];
+    if (!moved) {
+      return false;
+    }
+    if (fromIndex < toIndex) {
+      toIndex -= 1;
+    }
+    next.splice(toIndex, 0, moved);
+    state.designer.configs = next;
+    return true;
+  }
+
+  // Persist the current gallery order in host storage so save/reload keeps user ordering.
+  function persistDesignerConfigOrder() {
+    var list = state.designer.configs || [];
+    if (!list.length) {
+      return;
+    }
+    var orderedIds = [];
+    for (var i = 0; i < list.length; i += 1) {
+      if (list[i] && list[i].id) {
+        orderedIds.push(String(list[i].id));
+      }
+    }
+    var payload = {
+      ratioW: state.ratioW,
+      ratioH: state.ratioH,
+      orderedIds: orderedIds
+    };
+    var script = "gridMaker_designerReorderConfigs(" + quoteForEvalScript(JSON.stringify(payload)) + ")";
+    appendDebug("UI> evalScript: gridMaker_designerReorderConfigs(<payload>)");
+    callHost(script, function (result) {
+      appendDebug("HOST< raw(designer-reorder): " + (result || "<empty>"));
+      var parsed = parseJsonSafe(result);
+      if (!parsed || !parsed.ok) {
+        appendDebug("UI> designer reorder persist failed");
+      }
+    });
   }
 
   function adoptDesignerConfigList(configs, preferredId, autoPick) {

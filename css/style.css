@@ -249,7 +249,7 @@ input[type="range"] {
 }
 
 .designer-actions-config {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(84px, 1fr) minmax(118px, 1.55fr) repeat(3, minmax(84px, 1fr));
 }
 
 .designer-actions > * {
@@ -257,9 +257,16 @@ input[type="range"] {
 }
 
 .designer-actions-config button {
-  /* Let long localized labels wrap inside the button instead of overflowing their grid cell. */
-  white-space: normal;
-  line-height: 1.15;
+  /* Keep config actions on one row as long as possible on medium widths. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.1;
+  font-size: 11px;
+}
+
+#designerNameInput {
+  min-width: 0;
 }
 
 .grid-header {
@@ -377,6 +384,21 @@ input[type="range"] {
   background: #121212;
   padding: 4px;
   min-width: 0;
+  max-width: 100%;
+}
+
+.designer-gallery-item[draggable="true"] {
+  cursor: grab;
+}
+
+.designer-gallery-item.dragging {
+  opacity: 0.55;
+  cursor: grabbing;
+}
+
+.designer-gallery-item.drag-over {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .designer-gallery-item.active {
@@ -437,13 +459,16 @@ input[type="range"] {
 .preview-panel {
   display: flex;
   flex-direction: column;
-  flex: 1 1 180px;
+  /* Keep preview and debug stacked in normal flow; page scroll handles small heights. */
+  flex: 0 0 auto;
   min-height: 0;
+  overflow: hidden;
 }
 
 .grid-stage {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-height: 88px;
+  height: clamp(110px, 28vh, 260px);
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #101010;
@@ -721,6 +746,14 @@ body.designer-dragging .designer-resize-handle {
 }
 
 @media (max-width: 700px) and (min-width: 521px) {
+  .designer-gallery-tools {
+    /* Move the slider row below the title before it overflows the Configs panel width. */
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+@media (max-width: 620px) and (min-width: 521px) {
   .designer-actions-config {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -728,12 +761,6 @@ body.designer-dragging .designer-resize-handle {
   #designerNameInput {
     /* Keep the config name input readable on narrow widths without breaking the whole panel. */
     grid-column: 1 / -1;
-  }
-
-  .designer-gallery-tools {
-    /* Move the slider row below the title before it overflows the Configs panel width. */
-    margin-left: 0;
-    width: 100%;
   }
 }
 

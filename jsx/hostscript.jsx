@@ -3786,20 +3786,89 @@ function gridMaker_designerListConfigs(ratioW, ratioH) {
                 updatedAt: cfg.updatedAt || ""
             });
         }
-        list.sort(function (a, b) {
-            var ta = String(a.updatedAt || "");
-            var tb = String(b.updatedAt || "");
-            if (ta > tb) {
-                return -1;
-            }
-            if (ta < tb) {
-                return 1;
-            }
-            return 0;
-        });
+        // Keep user-defined visual order from store (do not auto-sort by updatedAt).
         return _gridMaker_jsonStringify({ ok: true, configs: list });
     } catch (e) {
         return _gridMaker_jsonStringify({ ok: false, message: String(e), configs: [] });
+    }
+}
+
+// Persist a manual config order (drag & drop from panel preview cards) for one ratio.
+function gridMaker_designerReorderConfigs(payloadJson) {
+    try {
+        var payload = _gridMaker_jsonParse(String(payloadJson || ""));
+        if (!payload) {
+            return _gridMaker_jsonStringify({ ok: false, message: "invalid_payload" });
+        }
+
+        var ratioW = _gridMaker_toNumber(payload.ratioW);
+        var ratioH = _gridMaker_toNumber(payload.ratioH);
+        if (!_gridMaker_isFiniteNumber(ratioW) || !_gridMaker_isFiniteNumber(ratioH) || !(ratioW > 0) || !(ratioH > 0)) {
+            return _gridMaker_jsonStringify({ ok: false, message: "invalid_ratio" });
+        }
+        var ratioKey = _gridMaker_designerRatioKey(ratioW, ratioH);
+
+        var orderedIds = (payload.orderedIds instanceof Array) ? payload.orderedIds : [];
+        var uniqueIds = [];
+        var seen = {};
+        for (var i = 0; i < orderedIds.length; i++) {
+            var id = _gridMaker_designerSanitizeId(orderedIds[i]);
+            if (!id || seen[id]) {
+                continue;
+            }
+            seen[id] = true;
+            uniqueIds.push(id);
+        }
+
+        var store = _gridMaker_designerReadStore();
+        var targetConfigs = [];
+        var byId = {};
+        for (i = 0; i < store.configs.length; i++) {
+            var cfg = store.configs[i];
+            if (!cfg || cfg.ratioKey !== ratioKey) {
+                continue;
+            }
+            targetConfigs.push(cfg);
+            byId[cfg.id] = cfg;
+        }
+        if (targetConfigs.length < 1) {
+            return _gridMaker_jsonStringify({ ok: true, count: 0 });
+        }
+
+        var reordered = [];
+        var used = {};
+        for (i = 0; i < uniqueIds.length; i++) {
+            var picked = byId[uniqueIds[i]];
+            if (!picked) {
+                continue;
+            }
+            reordered.push(picked);
+            used[picked.id] = true;
+        }
+        // Append missing configs so accidental partial payloads cannot drop entries.
+        for (i = 0; i < targetConfigs.length; i++) {
+            if (used[targetConfigs[i].id]) {
+                continue;
+            }
+            reordered.push(targetConfigs[i]);
+        }
+
+        // Replace only ratio-matching slots to preserve global store structure.
+        var cursor = 0;
+        for (i = 0; i < store.configs.length; i++) {
+            if (!store.configs[i] || store.configs[i].ratioKey !== ratioKey) {
+                continue;
+            }
+            store.configs[i] = reordered[cursor];
+            cursor += 1;
+        }
+
+        if (!_gridMaker_designerWriteStore(store)) {
+            return _gridMaker_jsonStringify({ ok: false, message: "write_failed" });
+        }
+        return _gridMaker_jsonStringify({ ok: true, count: reordered.length });
+    } catch (e) {
+        return _gridMaker_jsonStringify({ ok: false, message: String(e) });
     }
 }
 
