@@ -6,9 +6,9 @@ Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 
 - Grid size with two sliders: rows x columns (1 to 10)
 - Ratio preset selector: `16:9`, `1:1`, `9:16`, `4:5`, `3:2`
-- Global margin slider (px) applied to outer margins and spacing between cells/blocks
 - Auto crop effect selection by Premiere version: `Rounded Crop` on `25.5+`, classic `Crop` fallback on older versions
 - Roundness slider (`%`) for rounded corners in normal + designer workflows (auto-hidden on non-compatible hosts)
+- Global margin slider (px) applied to outer margins and spacing between cells/blocks
 - Clickable live grid preview
 - One-click placement to a target cell using `Transform` + `Crop`
 - Batch apply: map selected timeline clips to cells in one click (ordered by track from bottom to top)
@@ -17,7 +17,6 @@ Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 - Create a Designer block from the currently selected clip visual state (Motion Position/Scale + Crop)
 - Designer presets per ratio, saved locally with gallery preview and quick load/delete
 - Designer preset gallery supports drag & drop ordering (order is persisted and no longer reset on save)
-- Designer presets also store their own Global Margin value
 - Designer preset import/export in JSON (team sharing + backup)
 - UI localization: English (default), French, Spanish, German, Portuguese (Brazil), Japanese, Italian, Chinese (Simplified), Russian
 - Built-in update check against latest GitHub release (with direct ZIP download button when newer version exists)
@@ -176,7 +175,7 @@ Then include it in `index.html` before `js/main.js`.
 
 ## Changelog
 
-### Unreleased (main branch)
+### v1.3.0
 
 - Added host capability detection (`Rounded Crop` support) to adapt UI controls per Premiere version.
 - Added dynamic crop effect strategy:
