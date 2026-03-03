@@ -1685,6 +1685,7 @@
         return;
       }
       event.preventDefault();
+      clearDesignerGalleryDropIndicators();
       if (event && event.dataTransfer) {
         event.dataTransfer.dropEffect = "move";
       }
@@ -1710,6 +1711,7 @@
       designerGalleryClickSuppressUntil = Date.now() + 250;
       appendDebug("UI> designer configs reordered drag=" + designerGalleryDragId + " to=end");
       designerGalleryDragId = "";
+      clearDesignerGalleryDropIndicators();
       persistDesignerConfigOrder();
       renderPreview();
     };
@@ -1792,6 +1794,14 @@
             return;
           }
           event.preventDefault();
+          event.stopPropagation();
+          clearDesignerGalleryDropIndicators();
+          // Show insertion side marker based on pointer position within the hovered card.
+          var rect = item.getBoundingClientRect();
+          var pointerX = event.clientX || 0;
+          var placeAfter = pointerX > (rect.left + rect.width / 2);
+          item.classList.toggle("drag-insert-after", placeAfter);
+          item.classList.toggle("drag-insert-before", !placeAfter);
           if (event && event.dataTransfer) {
             event.dataTransfer.dropEffect = "move";
           }
@@ -1800,6 +1810,8 @@
 
         item.addEventListener("dragleave", function () {
           item.classList.remove("drag-over");
+          item.classList.remove("drag-insert-before");
+          item.classList.remove("drag-insert-after");
         });
 
         item.addEventListener("drop", function (event) {
@@ -1808,11 +1820,15 @@
           }
           event.preventDefault();
           event.stopPropagation();
-          item.classList.remove("drag-over");
+          var placeAfterDrop = item.classList.contains("drag-insert-after");
+          clearDesignerGalleryDropIndicators();
           // Reorder locally first for immediate visual feedback, then persist to host storage.
-          if (reorderDesignerConfigList(designerGalleryDragId, cfg.id)) {
+          if (reorderDesignerConfigList(designerGalleryDragId, cfg.id, placeAfterDrop)) {
             designerGalleryClickSuppressUntil = Date.now() + 250;
-            appendDebug("UI> designer configs reordered drag=" + designerGalleryDragId + " before=" + cfg.id);
+            appendDebug(
+              "UI> designer configs reordered drag=" + designerGalleryDragId +
+              (placeAfterDrop ? " after=" : " before=") + cfg.id
+            );
             persistDesignerConfigOrder();
             renderPreview();
           }
@@ -1822,11 +1838,7 @@
         item.addEventListener("dragend", function () {
           designerGalleryDragId = "";
           item.classList.remove("dragging");
-          item.classList.remove("drag-over");
-          var cards = designerGallery ? designerGallery.querySelectorAll(".designer-gallery-item.drag-over") : [];
-          for (var ci = 0; ci < cards.length; ci += 1) {
-            cards[ci].classList.remove("drag-over");
-          }
+          clearDesignerGalleryDropIndicators();
         });
 
         designerGallery.appendChild(item);
@@ -1890,6 +1902,21 @@
     }
   }
 
+  // Clear transient gallery drop indicators so only the active insertion marker stays visible.
+  function clearDesignerGalleryDropIndicators() {
+    if (!designerGallery) {
+      return;
+    }
+    var cards = designerGallery.querySelectorAll(
+      ".designer-gallery-item.drag-over, .designer-gallery-item.drag-insert-before, .designer-gallery-item.drag-insert-after"
+    );
+    for (var i = 0; i < cards.length; i += 1) {
+      cards[i].classList.remove("drag-over");
+      cards[i].classList.remove("drag-insert-before");
+      cards[i].classList.remove("drag-insert-after");
+    }
+  }
+
   function findDesignerConfigIndexById(configId) {
     if (!configId) {
       return -1;
@@ -1904,7 +1931,7 @@
   }
 
   // Reorder local preset cards in memory so UI feedback is immediate during drag/drop.
-  function reorderDesignerConfigList(dragId, targetId) {
+  function reorderDesignerConfigList(dragId, targetId, placeAfter) {
     var fromIndex = findDesignerConfigIndexById(dragId);
     var toIndex = findDesignerConfigIndexById(targetId);
     if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) {
@@ -1914,6 +1941,10 @@
     var moved = next.splice(fromIndex, 1)[0];
     if (!moved) {
       return false;
+    }
+    // When dropping after a card, insertion index is shifted by one slot.
+    if (placeAfter) {
+      toIndex += 1;
     }
     if (fromIndex < toIndex) {
       toIndex -= 1;

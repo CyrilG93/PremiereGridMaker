@@ -293,7 +293,8 @@ input[type="range"] {
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  flex-wrap: wrap;
+  /* Keep title + size slider on one line as long as there is horizontal space. */
+  flex-wrap: nowrap;
   gap: 8px;
   min-width: 0;
   cursor: pointer;
@@ -342,10 +343,12 @@ input[type="range"] {
 .designer-gallery-tools {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px;
   margin-left: auto;
+  flex: 0 1 190px;
   min-width: 0;
-  max-width: 100%;
+  max-width: 190px;
 }
 
 .designer-gallery-panel:not([open]) .designer-gallery-tools {
@@ -359,7 +362,9 @@ input[type="range"] {
 }
 
 .designer-gallery-size {
-  width: 72px;
+  width: 100%;
+  min-width: 72px;
+  max-width: 132px;
 }
 
 .designer-gallery-empty {
@@ -379,6 +384,7 @@ input[type="range"] {
 
 .designer-gallery-item {
   display: grid;
+  position: relative;
   gap: 4px;
   text-align: left;
   background: #121212;
@@ -399,6 +405,28 @@ input[type="range"] {
 .designer-gallery-item.drag-over {
   border-color: var(--accent);
   box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* Show clear insertion marker when dropping before/after a preview card. */
+.designer-gallery-item.drag-insert-before::before,
+.designer-gallery-item.drag-insert-after::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--ok);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+.designer-gallery-item.drag-insert-before::before {
+  left: -5px;
+}
+
+.designer-gallery-item.drag-insert-after::after {
+  right: -5px;
 }
 
 .designer-gallery-item.active {
@@ -747,20 +775,37 @@ body.designer-dragging .designer-resize-handle {
 
 @media (max-width: 700px) and (min-width: 521px) {
   .designer-gallery-tools {
-    /* Move the slider row below the title before it overflows the Configs panel width. */
-    margin-left: 0;
-    width: 100%;
+    /* Shrink slider controls first before allowing the summary row to wrap. */
+    flex-basis: 164px;
+    max-width: 164px;
   }
 }
 
-@media (max-width: 620px) and (min-width: 521px) {
+@media (max-width: 760px) and (min-width: 521px) {
   .designer-actions-config {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    /* Two-row config actions layout:
+       row 1 = New / Name / Save, row 2 = Import / Export. */
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  #designerNewBtn {
+    grid-column: 1 / 3;
   }
 
   #designerNameInput {
-    /* Keep the config name input readable on narrow widths without breaking the whole panel. */
-    grid-column: 1 / -1;
+    grid-column: 3 / 5;
+  }
+
+  #designerSaveBtn {
+    grid-column: 5 / 7;
+  }
+
+  #designerImportBtn {
+    grid-column: 1 / 4;
+  }
+
+  #designerExportBtn {
+    grid-column: 4 / 7;
   }
 }
 
