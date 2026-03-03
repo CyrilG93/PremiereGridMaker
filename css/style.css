@@ -166,6 +166,31 @@ h1 {
   flex: 0 0 auto;
 }
 
+.controls-panel.designer-condensed {
+  /* Compact vertical rhythm for Designer mode to reclaim panel height. */
+  gap: 4px;
+}
+
+.controls-panel.designer-condensed > label {
+  margin: 0 0 4px;
+}
+
+.controls-panel.designer-condensed > .input-row {
+  margin-bottom: 5px;
+  gap: 5px;
+}
+
+.controls-panel.designer-condensed > #applyBatchBtn {
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+.controls-panel.designer-condensed .designer-controls {
+  margin-top: 2px;
+  padding-top: 6px;
+  gap: 5px;
+}
+
 .update-banner {
   display: block;
   border: 1px solid #2d6f39;

@@ -91,6 +91,7 @@
   var designerModeBtn = document.getElementById("designerModeBtn");
   var classicGridControls = document.getElementById("classicGridControls");
   var designerControls = document.getElementById("designerControls");
+  var controlsPanel = document.querySelector(".controls-panel");
   var designerEditBtn = document.getElementById("designerEditBtn");
   var designerFreeBtn = document.getElementById("designerFreeBtn");
   var designerCaptureBtn = document.getElementById("designerCaptureBtn");
@@ -1622,6 +1623,10 @@
   }
 
   function renderDesignerControlsState() {
+    // Toggle a compact spacing mode so the top controls consume less height in Designer mode.
+    if (controlsPanel) {
+      controlsPanel.classList.toggle("designer-condensed", !!state.designer.enabled);
+    }
     if (classicGridControls) {
       classicGridControls.hidden = !!state.designer.enabled;
       classicGridControls.style.display = state.designer.enabled ? "none" : "";
