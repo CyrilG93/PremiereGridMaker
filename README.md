@@ -176,10 +176,6 @@ Then include it in `index.html` before `js/main.js`.
 
 ## Changelog
 
-### Unreleased (main branch)
-
-- Added panel/UI state persistence so the extension reopens in the same view (classic or designer) with previous grid settings and panel open/closed state.
-
 ### v1.3.0
 
 - Added host capability detection (`Rounded Crop` support) to adapt UI controls per Premiere version.
@@ -191,6 +187,7 @@ Then include it in `index.html` before `js/main.js`.
 - Added drag & drop reordering of Designer preset previews, with persistent order per ratio.
 - Added a clear drag & drop insertion indicator (green marker) in Designer preset gallery.
 - Updated Designer controls responsive behavior to keep the config action row on one line longer before switching to multi-line layout.
+- Added panel/UI state persistence so the extension reopens in the same view (classic or designer) with previous grid settings and panel open/closed state.
 - Refined config actions responsive layout to use a deterministic two-row pattern (`New/Name/Save`, then `Import/Export`) before list mode.
 - Hardened small-panel layout so Preview stays contained and Debug remains stacked below without overlap.
 - Added a compact spacing mode for top controls in Designer mode (ratio, margin/roundness, batch) to reduce vertical footprint.
