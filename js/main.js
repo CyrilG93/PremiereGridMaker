@@ -13,6 +13,7 @@
   var DESIGNER_GALLERY_MIN = 56;
   var DESIGNER_GALLERY_MAX = 140;
   var DESIGNER_GALLERY_DEFAULT = 64;
+  var PANEL_STATE_STORAGE_KEY = "pgm.panelState";
 
   // Central runtime state for UI controls, active ratio, locale and designer mode.
   var state = {
@@ -61,6 +62,8 @@
     inFlight: false,
     queued: null
   };
+  var panelStatePersistTimer = 0;
+  var lastPanelStateSerialized = "";
   var APPLY_RETRY_DELAY_MS = 450;
   var APPLY_MAX_RETRIES = 0;
 
@@ -221,6 +224,133 @@
       return fallback;
     }
     return clampInt(parsed, 0, 100, fallback);
+  }
+
+  // Load persisted panel/UI state so users can reopen the extension in the same view.
+  function resolveInitialPanelState() {
+    var raw = null;
+    try {
+      raw = window.localStorage.getItem(PANEL_STATE_STORAGE_KEY);
+    } catch (e1) {
+      raw = null;
+    }
+    if (!raw) {
+      return null;
+    }
+    return parseJsonSafe(raw);
+  }
+
+  function hasRatioOption(value) {
+    if (!ratio || !value) {
+      return false;
+    }
+    for (var i = 0; i < ratio.options.length; i += 1) {
+      if (ratio.options[i] && ratio.options[i].value === value) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Apply persisted state to in-memory values + UI controls before first render.
+  function restorePanelStateFromStorage() {
+    var saved = resolveInitialPanelState();
+    var restored = {
+      designerEnabled: false
+    };
+    if (!saved || typeof saved !== "object") {
+      return restored;
+    }
+
+    state.rows = clampInt(saved.rows, 1, 10, state.rows);
+    state.cols = clampInt(saved.cols, 1, 10, state.cols);
+
+    var ratioW = clampInt(saved.ratioW, 1, 99, state.ratioW);
+    var ratioH = clampInt(saved.ratioH, 1, 99, state.ratioH);
+    var ratioValue = ratioW + ":" + ratioH;
+    if (hasRatioOption(ratioValue)) {
+      state.ratioW = ratioW;
+      state.ratioH = ratioH;
+      if (ratio) {
+        ratio.value = ratioValue;
+      }
+    }
+
+    state.designer.editMode = !!saved.designerEditMode;
+    state.designer.freeMode = !!saved.designerFreeMode && state.designer.editMode;
+    state.designer.activeConfigId = saved.designerActiveConfigId ? String(saved.designerActiveConfigId) : "";
+    restored.designerEnabled = !!saved.designerEnabled;
+
+    if (rowsRange) {
+      rowsRange.value = String(state.rows);
+    }
+    if (rowsNumber) {
+      rowsNumber.value = String(state.rows);
+    }
+    if (colsRange) {
+      colsRange.value = String(state.cols);
+    }
+    if (colsNumber) {
+      colsNumber.value = String(state.cols);
+    }
+
+    if (debugPanel && typeof saved.debugOpen === "boolean") {
+      debugPanel.open = !!saved.debugOpen;
+    }
+    if (designerGalleryPanel && typeof saved.designerGalleryOpen === "boolean") {
+      designerGalleryPanel.open = !!saved.designerGalleryOpen;
+    }
+
+    return restored;
+  }
+
+  function buildPanelStateSnapshot() {
+    return {
+      rows: clampInt(state.rows, 1, 10, 2),
+      cols: clampInt(state.cols, 1, 10, 2),
+      ratioW: clampInt(state.ratioW, 1, 99, 16),
+      ratioH: clampInt(state.ratioH, 1, 99, 9),
+      designerEnabled: !!state.designer.enabled,
+      designerEditMode: !!state.designer.editMode,
+      designerFreeMode: !!state.designer.freeMode,
+      designerActiveConfigId: state.designer.activeConfigId ? String(state.designer.activeConfigId) : "",
+      debugOpen: !!(debugPanel && debugPanel.open),
+      designerGalleryOpen: !!(designerGalleryPanel && designerGalleryPanel.open)
+    };
+  }
+
+  function persistPanelStateNow() {
+    var snapshot = buildPanelStateSnapshot();
+    var serialized = _safeStringify(snapshot);
+    if (!serialized || serialized === lastPanelStateSerialized) {
+      return;
+    }
+    try {
+      window.localStorage.setItem(PANEL_STATE_STORAGE_KEY, serialized);
+      lastPanelStateSerialized = serialized;
+    } catch (e1) {
+      // Ignore localStorage write issues in CEP hosts.
+    }
+  }
+
+  // Debounce writes so frequent UI refreshes (for example while dragging blocks) stay cheap.
+  function schedulePersistPanelState() {
+    if (panelStatePersistTimer) {
+      window.clearTimeout(panelStatePersistTimer);
+      panelStatePersistTimer = 0;
+    }
+    panelStatePersistTimer = window.setTimeout(function () {
+      panelStatePersistTimer = 0;
+      persistPanelStateNow();
+    }, 140);
+  }
+
+  function _safeStringify(value) {
+    try {
+      return JSON.stringify(value);
+    } catch (e1) {
+      return "";
+    }
   }
 
   function getLocaleStrings() {
@@ -1620,6 +1750,7 @@
     renderDesignerControlsState();
     renderDesignerGallery();
     schedulePreviewFit();
+    schedulePersistPanelState();
   }
 
   function renderDesignerControlsState() {
@@ -2485,12 +2616,14 @@
   if (debugPanel) {
     debugPanel.addEventListener("toggle", function () {
       schedulePreviewFit();
+      schedulePersistPanelState();
     });
   }
 
   if (designerGalleryPanel) {
     designerGalleryPanel.addEventListener("toggle", function () {
       schedulePreviewFit();
+      schedulePersistPanelState();
     });
   }
 
@@ -2701,6 +2834,7 @@
   }
 
   // Initial boot sequence for UI state, i18n, preview and update check.
+  var restoredPanelState = restorePanelStateFromStorage();
   applyDesignerGallerySize(state.designer.gallerySize, false);
   applyGlobalMarginPx(state.marginPx, false);
   applyGlobalRoundness(state.roundness, false);
@@ -2723,7 +2857,10 @@
 
   renderLanguageOptions();
   setLocale(state.locale);
-  setStatusKey("status.ready", {}, "");
+  // Reopen the last view (classic/designer) so repeated sessions keep the same working context.
+  setDesignerMode(!!restoredPanelState.designerEnabled);
+  setStatusKey(state.designer.enabled ? "status.designer_ready" : "status.ready", {}, "");
+  persistPanelStateNow();
   appendDebug("INIT> panel ready");
   loadHostCapabilities();
   checkForUpdates();

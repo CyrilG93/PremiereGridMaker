@@ -18,6 +18,7 @@ Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 - Designer presets per ratio, saved locally with gallery preview and quick load/delete
 - Designer preset gallery supports drag & drop ordering (order is persisted and no longer reset on save)
 - Designer preset import/export in JSON (team sharing + backup)
+- Panel state persistence between sessions (reopens the same classic/designer view and UI context)
 - UI localization: English (default), French, Spanish, German, Portuguese (Brazil), Japanese, Italian, Chinese (Simplified), Russian
 - Built-in update check against latest GitHub release (with direct ZIP download button when newer version exists)
 
@@ -174,6 +175,10 @@ window.PGM_I18N.registerLocale({
 Then include it in `index.html` before `js/main.js`.
 
 ## Changelog
+
+### Unreleased (main branch)
+
+- Added panel/UI state persistence so the extension reopens in the same view (classic or designer) with previous grid settings and panel open/closed state.
 
 ### v1.3.0
 
