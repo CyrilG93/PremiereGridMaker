@@ -22,7 +22,7 @@ Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 - UI localization: English (default), French, Spanish, German, Portuguese (Brazil), Japanese, Italian, Chinese (Simplified), Russian
 - Built-in update check against latest GitHub release (with direct ZIP download button when newer version exists)
 
-## Installation (Recommended)
+## Installation
 
 The easiest and safest method is to use the installer scripts included in this repo.
 
