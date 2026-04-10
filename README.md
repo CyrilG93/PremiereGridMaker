@@ -32,7 +32,7 @@ Right click on the install-win.bat file and select "Run as administrator".
 
 Or run the following command:
 
-```powershell
+```
 cd C:\path\to\PremiereGridMaker
 .\install-win.bat
 ```
