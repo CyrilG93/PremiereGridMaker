@@ -115,9 +115,9 @@ h1 {
 }
 
 #designerEditBtn.edit-on {
-  border-color: #2f9d4f;
-  background: rgba(47, 157, 79, 0.25);
-  color: #dcffe7;
+  border-color: rgba(255, 183, 77, 0.95);
+  background: rgba(255, 159, 67, 0.2);
+  color: #fff1df;
 }
 
 #designerEditBtn.edit-off {
@@ -321,8 +321,9 @@ input[type="range"] {
 }
 
 .designer-preview-tool.locked {
-  border-color: var(--ok);
-  background: rgba(76, 175, 80, 0.16);
+  border-color: var(--line);
+  background: #111;
+  color: var(--text);
 }
 
 .designer-preview-tool.unlocked {

@@ -1,4 +1,4 @@
-# Grid Maker - v1.3.6
+# Grid Maker - v1.3.7
 
 Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 
@@ -132,6 +132,7 @@ Batch order is deterministic:
 - A simple click on one selected block returns to a single-block selection.
 - Outside edit mode, selected blocks keep the clean preview style without the dashed edit overlay.
 - Active edit-state toggles (`Edit ON`, `Free ON`, `Order Unlocked`) now share the orange modification color code.
+- `Order Locked` keeps the neutral default button style, while `Edit ON` stays orange and `Edit OFF` stays red.
 - Use the toolbar above the grid to center the selection horizontally, vertically, or both.
 - `Order locked` is enabled by default so block numbering stays stable while editing presets.
 - Unlock order only when you intentionally want moved blocks to come to the front and change numbering.
