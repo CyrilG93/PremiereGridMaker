@@ -668,21 +668,21 @@ input[type="range"] {
 }
 
 .designer-cell.selected {
-  border-color: rgba(255, 206, 92, 0.95);
-  /* Make every block in a multi-selection clearly visible, not just the last active one. */
+  border-color: rgba(111, 232, 124, 0.95);
+  /* Keep all selected blocks visible while staying consistent with the regular green selection language. */
   background:
-    linear-gradient(180deg, rgba(255, 201, 79, 0.26), rgba(255, 159, 67, 0.18));
+    linear-gradient(180deg, rgba(73, 179, 92, 0.18), rgba(39, 109, 54, 0.14));
   box-shadow:
-    inset 0 0 0 1px rgba(255, 206, 92, 0.78),
-    0 0 0 1px rgba(255, 206, 92, 0.32),
-    0 0 12px rgba(255, 183, 77, 0.24);
+    inset 0 0 0 1px rgba(111, 232, 124, 0.78),
+    0 0 0 1px rgba(111, 232, 124, 0.22),
+    0 0 10px rgba(111, 232, 124, 0.16);
 }
 
 .designer-cell.selected::before {
   content: "";
   position: absolute;
   inset: 3px;
-  border: 1px dashed rgba(255, 224, 140, 0.78);
+  border: 1px dashed rgba(189, 255, 198, 0.72);
   border-radius: 4px;
   pointer-events: none;
 }
@@ -807,13 +807,12 @@ input[type="range"] {
 
 .designer-selection-frame {
   position: absolute;
-  border: 2px solid rgba(111, 232, 124, 0.96);
-  border-radius: 8px;
+  border: 1px solid rgba(111, 232, 124, 0.92);
+  border-radius: 6px;
   box-shadow:
-    inset 0 0 0 1px rgba(205, 255, 210, 0.72),
-    0 0 0 1px rgba(111, 232, 124, 0.28),
-    0 0 16px rgba(111, 232, 124, 0.24);
-  background: rgba(111, 232, 124, 0.04);
+    inset 0 0 0 1px rgba(205, 255, 210, 0.28),
+    0 0 0 1px rgba(111, 232, 124, 0.18);
+  background: transparent;
   pointer-events: none;
   z-index: 1200;
 }
@@ -821,58 +820,58 @@ input[type="range"] {
 .designer-selection-frame::before {
   content: "";
   position: absolute;
-  inset: 4px;
-  border: 1px dashed rgba(201, 255, 207, 0.85);
-  border-radius: 5px;
+  inset: 2px;
+  border: 1px dashed rgba(201, 255, 207, 0.45);
+  border-radius: 4px;
   pointer-events: none;
 }
 
 .designer-selection-handle {
   position: absolute;
-  border: 1px solid rgba(205, 255, 210, 0.92);
-  background: rgba(111, 232, 124, 0.92);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  background: rgba(111, 232, 124, 0.26);
+  box-shadow: none;
   pointer-events: auto;
 }
 
 .designer-selection-handle:hover {
-  background: rgba(162, 246, 171, 0.98);
+  background: rgba(111, 232, 124, 0.42);
 }
 
 .designer-selection-handle-n,
 .designer-selection-handle-s {
   left: 50%;
-  width: 30px;
+  width: 12px;
   height: 8px;
-  margin-left: -15px;
-  border-radius: 999px;
+  margin-left: -6px;
+  border-radius: 3px;
   cursor: ns-resize;
 }
 
 .designer-selection-handle-n {
-  top: -5px;
+  top: -4px;
 }
 
 .designer-selection-handle-s {
-  bottom: -5px;
+  bottom: -4px;
 }
 
 .designer-selection-handle-e,
 .designer-selection-handle-w {
   top: 50%;
   width: 8px;
-  height: 30px;
-  margin-top: -15px;
-  border-radius: 999px;
+  height: 12px;
+  margin-top: -6px;
+  border-radius: 3px;
   cursor: ew-resize;
 }
 
 .designer-selection-handle-e {
-  right: -5px;
+  right: -4px;
 }
 
 .designer-selection-handle-w {
-  left: -5px;
+  left: -4px;
 }
 
 .designer-selection-handle-nw,
@@ -885,26 +884,26 @@ input[type="range"] {
 }
 
 .designer-selection-handle-nw {
-  left: -6px;
-  top: -6px;
+  left: -4px;
+  top: -4px;
   cursor: nwse-resize;
 }
 
 .designer-selection-handle-ne {
-  right: -6px;
-  top: -6px;
+  right: -4px;
+  top: -4px;
   cursor: nesw-resize;
 }
 
 .designer-selection-handle-sw {
-  left: -6px;
-  bottom: -6px;
+  left: -4px;
+  bottom: -4px;
   cursor: nesw-resize;
 }
 
 .designer-selection-handle-se {
-  right: -6px;
-  bottom: -6px;
+  right: -4px;
+  bottom: -4px;
   cursor: nwse-resize;
 }
 

@@ -5,7 +5,7 @@
   var cepBridge = window.cep || null;
   var csInterface = (typeof CSInterface !== "undefined") ? new CSInterface() : null;
   var i18n = window.PGM_I18N || { defaultLocale: "en", locales: {} };
-  var APP_VERSION = "1.3.3";
+  var APP_VERSION = "1.3.4";
   var RELEASE_API_URL = "https://api.github.com/repos/CyrilG93/PremiereGridMaker/releases/latest";
   var DESIGNER_GRID_SIZE = 10;
   var DESIGNER_FREE_SUBDIVISION = 10;
@@ -122,6 +122,7 @@
   // Track gallery drag state so preset cards can be reordered by drag & drop.
   var designerGalleryDragId = "";
   var designerGalleryClickSuppressUntil = 0;
+  var designerSelectionClickSuppressUntil = 0;
 
   // Debug helpers: timestamped logs in the collapsible debug panel.
   function getClockStamp() {
@@ -1887,7 +1888,8 @@
       startClientY: event.clientY,
       stageRect: rect,
       startBlock: startBlocks[0],
-      startBlocks: startBlocks
+      startBlocks: startBlocks,
+      didMutate: false
     };
 
     document.body.classList.add(action === "resize" ? "designer-resizing" : "designer-dragging");
@@ -1929,7 +1931,8 @@
       stageRect: rect,
       startBlocks: cloneDesignerBlocks(selectedBlocks),
       selectionBounds: selectionBounds,
-      minBounds: getDesignerGroupMinimumBounds(selectionBounds, selectedBlocks)
+      minBounds: getDesignerGroupMinimumBounds(selectionBounds, selectedBlocks),
+      didMutate: false
     };
 
     document.body.classList.add("designer-resizing");
@@ -1980,6 +1983,7 @@
       if (!moved) {
         return;
       }
+      designerDrag.didMutate = true;
       renderPreview();
       return;
     }
@@ -2006,6 +2010,7 @@
       if (!applyDesignerGroupResizeCandidates(resizeCandidates)) {
         return;
       }
+      designerDrag.didMutate = true;
       renderPreview();
       return;
     }
@@ -2067,12 +2072,17 @@
     live.y = candidate.y;
     live.w = candidate.w;
     live.h = candidate.h;
+    designerDrag.didMutate = true;
     renderPreview();
   }
 
   function onDesignerDragEnd() {
     if (!designerDrag) {
       return;
+    }
+    if (designerDrag.didMutate) {
+      // Suppress the trailing click fired by the browser after a real drag/resize.
+      designerSelectionClickSuppressUntil = Date.now() + 180;
     }
     designerDrag = null;
     document.body.classList.remove("designer-dragging");
@@ -2193,15 +2203,18 @@
         heightLabel.textContent = formatDesignerSizePercent(block.h);
         cell.appendChild(heightLabel);
 
-        if (state.designer.editMode && !showGroupFrame) {
-          ["nw", "ne", "sw", "se"].forEach(function (corner) {
-            var handle = document.createElement("span");
-            handle.className = "designer-resize-handle designer-resize-" + corner;
-            handle.title = t("designer.resize_hint");
-            handle.setAttribute("data-handle", corner);
-            cell.appendChild(handle);
-          });
+        if (state.designer.editMode) {
+          if (!showGroupFrame) {
+            ["nw", "ne", "sw", "se"].forEach(function (corner) {
+              var handle = document.createElement("span");
+              handle.className = "designer-resize-handle designer-resize-" + corner;
+              handle.title = t("designer.resize_hint");
+              handle.setAttribute("data-handle", corner);
+              cell.appendChild(handle);
+            });
+          }
 
+          // Blocks stay draggable even when the multi-selection frame is visible.
           cell.addEventListener("mousedown", function (event) {
             var target = event.target;
             var handleCorner = (target && target.getAttribute)
@@ -2217,6 +2230,15 @@
         cell.addEventListener("click", function (event) {
           event.stopPropagation();
           if (state.designer.editMode) {
+            if (Date.now() < designerSelectionClickSuppressUntil) {
+              return;
+            }
+            if (isDesignerMultiSelectGesture(event)) {
+              return;
+            }
+            // A simple click after a multi-selection should go back to a single selected block.
+            setDesignerSelection([block.id], block.id);
+            renderPreview();
             return;
           }
           setDesignerSelection([block.id], block.id);
