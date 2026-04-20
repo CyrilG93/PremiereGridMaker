@@ -703,6 +703,11 @@ input[type="range"] {
   border-color: rgba(180, 255, 188, 0.82);
 }
 
+/* Keep the cleaner non-edit preview look by hiding the dashed inner selection ring outside edit mode. */
+.grid-preview.designer-mode:not(.designer-edit-mode) .designer-cell.selected::before {
+  content: none;
+}
+
 .designer-cell-label {
   font-weight: 600;
   font-size: 11px;
