@@ -127,9 +127,9 @@ h1 {
 }
 
 #designerFreeBtn.free-on {
-  border-color: #2f89ff;
-  background: rgba(47, 137, 255, 0.24);
-  color: #e4f1ff;
+  border-color: rgba(255, 183, 77, 0.95);
+  background: rgba(255, 159, 67, 0.2);
+  color: #fff1df;
 }
 
 #designerFreeBtn.free-off {
@@ -326,8 +326,9 @@ input[type="range"] {
 }
 
 .designer-preview-tool.unlocked {
-  border-color: var(--accent);
-  background: rgba(47, 137, 255, 0.14);
+  border-color: rgba(255, 183, 77, 0.95);
+  background: rgba(255, 159, 67, 0.18);
+  color: #fff1df;
 }
 
 .designer-gallery-panel {
