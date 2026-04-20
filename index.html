@@ -11,7 +11,7 @@
     <header class="app-header">
       <div class="title-wrap">
         <h1 data-i18n="app.title">Grid Maker</h1>
-        <span id="appVersion" class="app-version">V1.3.0</span>
+        <span id="appVersion" class="app-version">V1.3.1</span>
       </div>
       <button id="designerModeBtn" class="header-btn" type="button" data-i18n="designer.mode_off">Grid Designer</button>
       <div class="lang-picker">
@@ -96,7 +96,12 @@
 
     <section class="panel preview-panel">
       <div class="grid-header">
-        <strong data-i18n="label.preview">Preview</strong>
+        <div id="designerPreviewTools" class="designer-preview-tools" hidden>
+          <button id="designerAlignCenterXBtn" class="designer-preview-tool" type="button" data-i18n="designer.align_center_x">Center X</button>
+          <button id="designerAlignCenterYBtn" class="designer-preview-tool" type="button" data-i18n="designer.align_center_y">Center Y</button>
+          <button id="designerAlignCenterBothBtn" class="designer-preview-tool" type="button" data-i18n="designer.align_center_both">Center</button>
+          <button id="designerOrderLockBtn" class="designer-preview-tool" type="button" data-i18n="designer.order_locked">Order locked</button>
+        </div>
         <span id="summary">2 x 2</span>
       </div>
       <div id="gridStage" class="grid-stage">

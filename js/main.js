@@ -5,7 +5,7 @@
   var cepBridge = window.cep || null;
   var csInterface = (typeof CSInterface !== "undefined") ? new CSInterface() : null;
   var i18n = window.PGM_I18N || { defaultLocale: "en", locales: {} };
-  var APP_VERSION = "1.3.0";
+  var APP_VERSION = "1.3.1";
   var RELEASE_API_URL = "https://api.github.com/repos/CyrilG93/PremiereGridMaker/releases/latest";
   var DESIGNER_GRID_SIZE = 10;
   var DESIGNER_FREE_SUBDIVISION = 10;
@@ -37,8 +37,10 @@
       freeMode: false,
       blocks: [],
       selectedBlockId: "",
+      selectedBlockIds: [],
       configs: [],
       activeConfigId: "",
+      orderLocked: true,
       nextBlockSeq: 1,
       loaded: false,
       gallerySize: resolveInitialGallerySize()
@@ -109,6 +111,11 @@
   var designerGallery = document.getElementById("designerGallery");
   var designerGallerySize = document.getElementById("designerGallerySize");
   var designerGalleryTools = document.getElementById("designerGalleryTools");
+  var designerPreviewTools = document.getElementById("designerPreviewTools");
+  var designerAlignCenterXBtn = document.getElementById("designerAlignCenterXBtn");
+  var designerAlignCenterYBtn = document.getElementById("designerAlignCenterYBtn");
+  var designerAlignCenterBothBtn = document.getElementById("designerAlignCenterBothBtn");
+  var designerOrderLockBtn = document.getElementById("designerOrderLockBtn");
   var applyBatchBtn = document.getElementById("applyBatchBtn");
 
   var designerDrag = null;
@@ -279,6 +286,9 @@
     state.designer.editMode = !!saved.designerEditMode;
     state.designer.freeMode = !!saved.designerFreeMode && state.designer.editMode;
     state.designer.activeConfigId = saved.designerActiveConfigId ? String(saved.designerActiveConfigId) : "";
+    state.designer.orderLocked = (typeof saved.designerOrderLocked === "boolean")
+      ? !!saved.designerOrderLocked
+      : state.designer.orderLocked;
     restored.designerEnabled = !!saved.designerEnabled;
 
     if (rowsRange) {
@@ -314,6 +324,7 @@
       designerEditMode: !!state.designer.editMode,
       designerFreeMode: !!state.designer.freeMode,
       designerActiveConfigId: state.designer.activeConfigId ? String(state.designer.activeConfigId) : "",
+      designerOrderLocked: !!state.designer.orderLocked,
       debugOpen: !!(debugPanel && debugPanel.open),
       designerGalleryOpen: !!(designerGalleryPanel && designerGalleryPanel.open)
     };
@@ -863,15 +874,74 @@
     return null;
   }
 
+  // Keep the selection list valid after block edits/loading so multi-select stays predictable.
+  function sanitizeDesignerSelectionIds(ids) {
+    var next = [];
+    var seen = {};
+    for (var i = 0; i < (ids || []).length; i += 1) {
+      var id = String(ids[i] || "");
+      if (!id || seen[id] || !findDesignerBlockById(id)) {
+        continue;
+      }
+      seen[id] = true;
+      next.push(id);
+    }
+    return next;
+  }
+
+  function setDesignerSelection(ids, primaryId) {
+    var nextIds = sanitizeDesignerSelectionIds(ids);
+    var nextPrimary = "";
+    if (primaryId && nextIds.indexOf(primaryId) !== -1) {
+      nextPrimary = primaryId;
+    } else if (nextIds.length) {
+      nextPrimary = nextIds[0];
+    }
+    state.designer.selectedBlockIds = nextIds;
+    state.designer.selectedBlockId = nextPrimary;
+  }
+
+  function isDesignerBlockSelected(blockId) {
+    return state.designer.selectedBlockIds.indexOf(blockId) !== -1;
+  }
+
+  function getSelectedDesignerBlocks() {
+    var selected = [];
+    for (var i = 0; i < state.designer.selectedBlockIds.length; i += 1) {
+      var block = findDesignerBlockById(state.designer.selectedBlockIds[i]);
+      if (block) {
+        selected.push(block);
+      }
+    }
+    return selected;
+  }
+
+  function isDesignerMultiSelectGesture(event) {
+    // Use Shift-only multi-select so the gesture stays explicit and consistent across macOS/Windows.
+    return !!(event && event.shiftKey);
+  }
+
   function ensureDesignerSelection() {
-    if (findDesignerBlockById(state.designer.selectedBlockId)) {
+    var validIds = sanitizeDesignerSelectionIds(state.designer.selectedBlockIds);
+    if (
+      state.designer.selectedBlockId &&
+      validIds.indexOf(state.designer.selectedBlockId) !== -1
+    ) {
+      state.designer.selectedBlockIds = validIds;
       return;
     }
-    if (state.designer.blocks.length > 0) {
-      state.designer.selectedBlockId = state.designer.blocks[0].id;
-    } else {
-      state.designer.selectedBlockId = "";
+
+    if (validIds.length) {
+      setDesignerSelection(validIds, validIds[0]);
+      return;
     }
+
+    if (state.designer.blocks.length > 0 && !state.designer.editMode) {
+      setDesignerSelection([state.designer.blocks[0].id], state.designer.blocks[0].id);
+      return;
+    }
+
+    setDesignerSelection([], "");
   }
 
   function nextDesignerBlockId() {
@@ -980,22 +1050,133 @@
     return regions;
   }
 
+  // Keep selected blocks stacked on top only when order editing is explicitly unlocked.
+  function designerBringSelectionToFront(blockIds) {
+    if (state.designer.orderLocked) {
+      return;
+    }
+    var selectedIds = sanitizeDesignerSelectionIds(blockIds);
+    if (!selectedIds.length || selectedIds.length === state.designer.blocks.length) {
+      return;
+    }
+
+    var keep = [];
+    var moved = [];
+    var selectedLookup = {};
+    for (var i = 0; i < selectedIds.length; i += 1) {
+      selectedLookup[selectedIds[i]] = true;
+    }
+
+    for (var j = 0; j < state.designer.blocks.length; j += 1) {
+      var block = state.designer.blocks[j];
+      if (selectedLookup[block.id]) {
+        moved.push(block);
+      } else {
+        keep.push(block);
+      }
+    }
+    state.designer.blocks = keep.concat(moved);
+  }
+
   function designerBringBlockToFront(blockId) {
     if (!blockId) {
       return;
     }
-    var index = -1;
-    for (var i = 0; i < state.designer.blocks.length; i += 1) {
-      if (state.designer.blocks[i].id === blockId) {
-        index = i;
-        break;
-      }
+    designerBringSelectionToFront([blockId]);
+  }
+
+  // Measure the selection as a single group so align/move actions preserve internal spacing.
+  function getDesignerSelectionBounds(blocks) {
+    if (!blocks || !blocks.length) {
+      return null;
     }
-    if (index < 0 || index === state.designer.blocks.length - 1) {
+    var minX = blocks[0].x;
+    var minY = blocks[0].y;
+    var maxX = blocks[0].x + blocks[0].w;
+    var maxY = blocks[0].y + blocks[0].h;
+
+    for (var i = 1; i < blocks.length; i += 1) {
+      var block = blocks[i];
+      minX = Math.min(minX, block.x);
+      minY = Math.min(minY, block.y);
+      maxX = Math.max(maxX, block.x + block.w);
+      maxY = Math.max(maxY, block.y + block.h);
+    }
+
+    return {
+      x: minX,
+      y: minY,
+      w: maxX - minX,
+      h: maxY - minY
+    };
+  }
+
+  // Clamp a group move so every selected block stays inside the 10x10 designer canvas.
+  function clampDesignerGroupDelta(blocks, desiredDx, desiredDy, step) {
+    var minDx = -Infinity;
+    var maxDx = Infinity;
+    var minDy = -Infinity;
+    var maxDy = Infinity;
+
+    for (var i = 0; i < blocks.length; i += 1) {
+      var block = blocks[i];
+      minDx = Math.max(minDx, -block.x);
+      maxDx = Math.min(maxDx, DESIGNER_GRID_SIZE - (block.x + block.w));
+      minDy = Math.max(minDy, -block.y);
+      maxDy = Math.min(maxDy, DESIGNER_GRID_SIZE - (block.y + block.h));
+    }
+
+    return {
+      dx: clampStep(desiredDx, minDx, maxDx, step, 0),
+      dy: clampStep(desiredDy, minDy, maxDy, step, 0)
+    };
+  }
+
+  // Center the current selection as a group on the canvas without changing block spacing.
+  function alignSelectedDesignerBlocks(axis) {
+    var selected = getSelectedDesignerBlocks();
+    if (!selected.length) {
+      setStatusKey("status.designer_block_select", {}, "err");
       return;
     }
-    var moved = state.designer.blocks.splice(index, 1)[0];
-    state.designer.blocks.push(moved);
+
+    var bounds = getDesignerSelectionBounds(selected);
+    var step = getDesignerStep();
+    var offsetX = 0;
+    var offsetY = 0;
+
+    if (axis === "x" || axis === "both") {
+      offsetX = ((DESIGNER_GRID_SIZE - bounds.w) / 2) - bounds.x;
+    }
+    if (axis === "y" || axis === "both") {
+      offsetY = ((DESIGNER_GRID_SIZE - bounds.h) / 2) - bounds.y;
+    }
+
+    var delta = clampDesignerGroupDelta(selected, offsetX, offsetY, step);
+    for (var i = 0; i < selected.length; i += 1) {
+      selected[i].x = Math.round((selected[i].x + delta.dx) * 1000) / 1000;
+      selected[i].y = Math.round((selected[i].y + delta.dy) * 1000) / 1000;
+    }
+
+    appendDebug(
+      "UI> designer align axis=" + axis +
+      " selection=" + state.designer.selectedBlockIds.length +
+      " dx=" + delta.dx + " dy=" + delta.dy
+    );
+    setStatusKey("status.designer_aligned", {}, "ok");
+    renderPreview();
+  }
+
+  function toggleDesignerOrderLock() {
+    state.designer.orderLocked = !state.designer.orderLocked;
+    appendDebug("UI> designer order lock " + (state.designer.orderLocked ? "ON" : "OFF"));
+    setStatusKey(
+      state.designer.orderLocked ? "status.designer_order_locked" : "status.designer_order_unlocked",
+      {},
+      "ok"
+    );
+    schedulePersistPanelState();
+    renderPreview();
   }
 
   // Preview sizing helpers keep the visual grid fitted to available panel space.
@@ -1457,7 +1638,7 @@
       return;
     }
 
-    state.designer.selectedBlockId = blockId;
+    setDesignerSelection([blockId], blockId);
     renderPreview();
 
     var leftNorm = formatPercent(block.x / DESIGNER_GRID_SIZE);
@@ -1499,7 +1680,7 @@
   }
 
   // Drag/resize interactions used in Designer edit mode.
-  function startDesignerDrag(event, blockId, action) {
+  function startDesignerDrag(event, blockId, action, handleCorner) {
     if (!state.designer.enabled || !state.designer.editMode) {
       return;
     }
@@ -1517,24 +1698,62 @@
       return;
     }
 
-    state.designer.selectedBlockId = blockId;
-    designerBringBlockToFront(blockId);
+    // Shift-click toggles a block in the current selection without starting a drag.
+    if (action === "move" && isDesignerMultiSelectGesture(event)) {
+      var nextSelection = state.designer.selectedBlockIds.slice();
+      var selectedIndex = nextSelection.indexOf(blockId);
+      if (selectedIndex === -1) {
+        nextSelection.push(blockId);
+      } else {
+        nextSelection.splice(selectedIndex, 1);
+      }
+      setDesignerSelection(nextSelection, blockId);
+      renderPreview();
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
+    // Moving a selected block keeps the whole selection together; resizing still targets one block.
+    var dragIds = (action === "move" && isDesignerBlockSelected(blockId))
+      ? state.designer.selectedBlockIds.slice()
+      : [blockId];
+    setDesignerSelection(dragIds, blockId);
+    designerBringSelectionToFront(dragIds);
+
+    var startBlocks = [];
+    for (var i = 0; i < dragIds.length; i += 1) {
+      var selectedBlock = findDesignerBlockById(dragIds[i]);
+      if (!selectedBlock) {
+        continue;
+      }
+      startBlocks.push({
+        id: selectedBlock.id,
+        x: selectedBlock.x,
+        y: selectedBlock.y,
+        w: selectedBlock.w,
+        h: selectedBlock.h
+      });
+    }
+
+    if (!startBlocks.length) {
+      return;
+    }
+
     designerDrag = {
+      ids: dragIds,
       id: blockId,
       action: action,
+      handleCorner: handleCorner || "se",
       startClientX: event.clientX,
       startClientY: event.clientY,
       stageRect: rect,
-      startBlock: {
-        id: block.id,
-        x: block.x,
-        y: block.y,
-        w: block.w,
-        h: block.h
-      }
+      startBlock: startBlocks[0],
+      startBlocks: startBlocks
     };
 
-    document.body.classList.add("designer-dragging");
+    document.body.classList.add(action === "resize" ? "designer-resizing" : "designer-dragging");
+    document.body.setAttribute("data-designer-handle", designerDrag.handleCorner);
     window.addEventListener("mousemove", onDesignerDragMove);
     window.addEventListener("mouseup", onDesignerDragEnd);
     event.preventDefault();
@@ -1547,7 +1766,6 @@
       return;
     }
 
-    var base = designerDrag.startBlock;
     var rect = designerDrag.stageRect;
     var dragStep = getDesignerStep();
     var gridUnits = getDesignerGridUnits();
@@ -1559,6 +1777,34 @@
 
     var dxCells = Math.round((event.clientX - designerDrag.startClientX) / stepX) * dragStep;
     var dyCells = Math.round((event.clientY - designerDrag.startClientY) / stepY) * dragStep;
+
+    if (designerDrag.action === "move") {
+      var moveBlocks = designerDrag.startBlocks || [];
+      var delta = clampDesignerGroupDelta(moveBlocks, dxCells, dyCells, dragStep);
+      var moved = false;
+      for (var i = 0; i < moveBlocks.length; i += 1) {
+        var startBlock = moveBlocks[i];
+        var liveBlock = findDesignerBlockById(startBlock.id);
+        if (!liveBlock) {
+          continue;
+        }
+        var nextX = Math.round((startBlock.x + delta.dx) * 1000) / 1000;
+        var nextY = Math.round((startBlock.y + delta.dy) * 1000) / 1000;
+        if (liveBlock.x === nextX && liveBlock.y === nextY) {
+          continue;
+        }
+        liveBlock.x = nextX;
+        liveBlock.y = nextY;
+        moved = true;
+      }
+      if (!moved) {
+        return;
+      }
+      renderPreview();
+      return;
+    }
+
+    var base = designerDrag.startBlock;
     var candidate = {
       id: base.id,
       x: base.x,
@@ -1566,16 +1812,39 @@
       w: base.w,
       h: base.h
     };
+    var nextLeft;
+    var nextTop;
+    var nextRight;
+    var nextBottom;
 
-    if (designerDrag.action === "move") {
-      candidate.x = clampStep(base.x + dxCells, 0, DESIGNER_GRID_SIZE - base.w, dragStep, base.x);
-      candidate.y = clampStep(base.y + dyCells, 0, DESIGNER_GRID_SIZE - base.h, dragStep, base.y);
+    // Each resize handle edits the corresponding block edges while keeping the opposite corner fixed.
+    if (designerDrag.handleCorner === "nw") {
+      nextLeft = clampStep(base.x + dxCells, 0, base.x + base.w - DESIGNER_MIN_BLOCK_SIZE, dragStep, base.x);
+      nextTop = clampStep(base.y + dyCells, 0, base.y + base.h - DESIGNER_MIN_BLOCK_SIZE, dragStep, base.y);
+      candidate.x = nextLeft;
+      candidate.y = nextTop;
+      candidate.w = Math.round((base.w + (base.x - nextLeft)) * 1000) / 1000;
+      candidate.h = Math.round((base.h + (base.y - nextTop)) * 1000) / 1000;
+    } else if (designerDrag.handleCorner === "ne") {
+      nextRight = clampStep(base.x + base.w + dxCells, base.x + DESIGNER_MIN_BLOCK_SIZE, DESIGNER_GRID_SIZE, dragStep, base.x + base.w);
+      nextTop = clampStep(base.y + dyCells, 0, base.y + base.h - DESIGNER_MIN_BLOCK_SIZE, dragStep, base.y);
+      candidate.y = nextTop;
+      candidate.w = Math.round((nextRight - base.x) * 1000) / 1000;
+      candidate.h = Math.round((base.h + (base.y - nextTop)) * 1000) / 1000;
+    } else if (designerDrag.handleCorner === "sw") {
+      nextLeft = clampStep(base.x + dxCells, 0, base.x + base.w - DESIGNER_MIN_BLOCK_SIZE, dragStep, base.x);
+      nextBottom = clampStep(base.y + base.h + dyCells, base.y + DESIGNER_MIN_BLOCK_SIZE, DESIGNER_GRID_SIZE, dragStep, base.y + base.h);
+      candidate.x = nextLeft;
+      candidate.w = Math.round((base.w + (base.x - nextLeft)) * 1000) / 1000;
+      candidate.h = Math.round((nextBottom - base.y) * 1000) / 1000;
     } else {
-      candidate.w = clampStep(base.w + dxCells, dragStep, DESIGNER_GRID_SIZE - base.x, dragStep, base.w);
-      candidate.h = clampStep(base.h + dyCells, dragStep, DESIGNER_GRID_SIZE - base.y, dragStep, base.h);
+      nextRight = clampStep(base.x + base.w + dxCells, base.x + DESIGNER_MIN_BLOCK_SIZE, DESIGNER_GRID_SIZE, dragStep, base.x + base.w);
+      nextBottom = clampStep(base.y + base.h + dyCells, base.y + DESIGNER_MIN_BLOCK_SIZE, DESIGNER_GRID_SIZE, dragStep, base.y + base.h);
+      candidate.w = Math.round((nextRight - base.x) * 1000) / 1000;
+      candidate.h = Math.round((nextBottom - base.y) * 1000) / 1000;
     }
 
-    if (!designerCanPlace(candidate, candidate.id)) {
+    if (!designerCanPlace(candidate, candidate.id, true)) {
       return;
     }
 
@@ -1601,6 +1870,8 @@
     }
     designerDrag = null;
     document.body.classList.remove("designer-dragging");
+    document.body.classList.remove("designer-resizing");
+    document.body.removeAttribute("data-designer-handle");
     window.removeEventListener("mousemove", onDesignerDragMove);
     window.removeEventListener("mouseup", onDesignerDragEnd);
   }
@@ -1614,6 +1885,7 @@
   // Render pipeline for classic grid, designer grid and shared panel state.
   function renderClassicGrid() {
     grid.classList.remove("designer-mode");
+    grid.classList.remove("designer-edit-mode");
     grid.innerHTML = "";
     grid.style.gridTemplateRows = "repeat(" + state.rows + ", 1fr)";
     grid.style.gridTemplateColumns = "repeat(" + state.cols + ", 1fr)";
@@ -1646,6 +1918,7 @@
   function renderDesignerGrid() {
     ensureDesignerSelection();
     grid.classList.add("designer-mode");
+    grid.classList.toggle("designer-edit-mode", !!state.designer.editMode);
     grid.innerHTML = "";
     grid.style.gridTemplateRows = "";
     grid.style.gridTemplateColumns = "";
@@ -1657,6 +1930,9 @@
         var cell = document.createElement("button");
         cell.type = "button";
         cell.className = "designer-cell";
+        if (isDesignerBlockSelected(block.id)) {
+          cell.className += " selected";
+        }
         if (state.designer.selectedBlockId === block.id) {
           cell.className += " active";
         }
@@ -1669,8 +1945,8 @@
         cell.style.width = (block.w * 100 / DESIGNER_GRID_SIZE) + "%";
         cell.style.height = (block.h * 100 / DESIGNER_GRID_SIZE) + "%";
         cell.style.zIndex = state.designer.selectedBlockId === block.id
-          ? "1000"
-          : String(10 + index);
+          ? "1001"
+          : (isDesignerBlockSelected(block.id) ? "1000" : String(10 + index));
         cell.setAttribute("data-id", block.id);
 
         var overlapCount = designerOverlapCountForBlock(block);
@@ -1710,28 +1986,32 @@
         cell.appendChild(heightLabel);
 
         if (state.designer.editMode) {
-          var handle = document.createElement("span");
-          handle.className = "designer-resize-handle";
-          handle.title = t("designer.resize_hint");
-          cell.appendChild(handle);
+          ["nw", "ne", "sw", "se"].forEach(function (corner) {
+            var handle = document.createElement("span");
+            handle.className = "designer-resize-handle designer-resize-" + corner;
+            handle.title = t("designer.resize_hint");
+            handle.setAttribute("data-handle", corner);
+            cell.appendChild(handle);
+          });
 
           cell.addEventListener("mousedown", function (event) {
             var target = event.target;
-            var action = (target && target.className && String(target.className).indexOf("designer-resize-handle") !== -1)
+            var handleCorner = (target && target.getAttribute)
+              ? String(target.getAttribute("data-handle") || "")
+              : "";
+            var action = handleCorner
               ? "resize"
               : "move";
-            startDesignerDrag(event, block.id, action);
+            startDesignerDrag(event, block.id, action, handleCorner);
           });
         }
 
         cell.addEventListener("click", function (event) {
           event.stopPropagation();
-          designerBringBlockToFront(block.id);
-          state.designer.selectedBlockId = block.id;
           if (state.designer.editMode) {
-            renderPreview();
             return;
           }
+          setDesignerSelection([block.id], block.id);
           applyDesignerBlock(block.id);
         });
 
@@ -1794,6 +2074,28 @@
       designerModeBtn.textContent = state.designer.enabled
         ? t("designer.mode_on")
         : t("designer.mode_off");
+    }
+
+    if (designerPreviewTools) {
+      designerPreviewTools.hidden = !state.designer.enabled;
+      designerPreviewTools.style.display = state.designer.enabled ? "" : "none";
+    }
+    if (designerAlignCenterXBtn) {
+      designerAlignCenterXBtn.disabled = !state.designer.enabled || !state.designer.editMode || !state.designer.selectedBlockIds.length;
+    }
+    if (designerAlignCenterYBtn) {
+      designerAlignCenterYBtn.disabled = !state.designer.enabled || !state.designer.editMode || !state.designer.selectedBlockIds.length;
+    }
+    if (designerAlignCenterBothBtn) {
+      designerAlignCenterBothBtn.disabled = !state.designer.enabled || !state.designer.editMode || !state.designer.selectedBlockIds.length;
+    }
+    if (designerOrderLockBtn) {
+      designerOrderLockBtn.disabled = !state.designer.enabled;
+      designerOrderLockBtn.textContent = state.designer.orderLocked
+        ? t("designer.order_locked")
+        : t("designer.order_unlocked");
+      designerOrderLockBtn.classList.toggle("locked", !!state.designer.orderLocked);
+      designerOrderLockBtn.classList.toggle("unlocked", !state.designer.orderLocked);
     }
 
     if (helpText) {
@@ -2330,7 +2632,7 @@
     };
 
     state.designer.blocks.push(block);
-    state.designer.selectedBlockId = block.id;
+    setDesignerSelection([block.id], block.id);
     appendDebug("UI> designer block added id=" + block.id + " x=" + block.x + " y=" + block.y + " w=" + block.w + " h=" + block.h);
     setStatusKey("status.designer_block_added", {}, "ok");
     renderPreview();
@@ -2357,7 +2659,7 @@
     }
 
     state.designer.blocks.push(block);
-    state.designer.selectedBlockId = block.id;
+    setDesignerSelection([block.id], block.id);
     return block;
   }
 
@@ -2406,20 +2708,24 @@
   }
 
   function removeSelectedDesignerBlock() {
-    var selectedId = state.designer.selectedBlockId;
-    if (!selectedId) {
+    var selectedIds = sanitizeDesignerSelectionIds(state.designer.selectedBlockIds);
+    if (!selectedIds.length) {
       setStatusKey("status.designer_block_select", {}, "err");
       return;
     }
 
     var next = [];
+    var selectedLookup = {};
     var removed = false;
-    for (var i = 0; i < state.designer.blocks.length; i += 1) {
-      if (state.designer.blocks[i].id === selectedId) {
+    for (var i = 0; i < selectedIds.length; i += 1) {
+      selectedLookup[selectedIds[i]] = true;
+    }
+    for (var j = 0; j < state.designer.blocks.length; j += 1) {
+      if (selectedLookup[state.designer.blocks[j].id]) {
         removed = true;
         continue;
       }
-      next.push(state.designer.blocks[i]);
+      next.push(state.designer.blocks[j]);
     }
 
     if (!removed) {
@@ -2429,7 +2735,7 @@
 
     state.designer.blocks = next;
     ensureDesignerSelection();
-    appendDebug("UI> designer block removed id=" + selectedId);
+    appendDebug("UI> designer block removed count=" + selectedIds.length);
     setStatusKey("status.designer_block_removed", {}, "ok");
     renderPreview();
   }
@@ -2654,7 +2960,7 @@
         return;
       }
       if (event.target === grid) {
-        state.designer.selectedBlockId = "";
+        setDesignerSelection([], "");
         renderPreview();
       }
     });
@@ -2708,6 +3014,33 @@
         return;
       }
       removeSelectedDesignerBlock();
+    });
+  }
+
+  if (designerAlignCenterXBtn) {
+    designerAlignCenterXBtn.addEventListener("click", function () {
+      alignSelectedDesignerBlocks("x");
+    });
+  }
+
+  if (designerAlignCenterYBtn) {
+    designerAlignCenterYBtn.addEventListener("click", function () {
+      alignSelectedDesignerBlocks("y");
+    });
+  }
+
+  if (designerAlignCenterBothBtn) {
+    designerAlignCenterBothBtn.addEventListener("click", function () {
+      alignSelectedDesignerBlocks("both");
+    });
+  }
+
+  if (designerOrderLockBtn) {
+    designerOrderLockBtn.addEventListener("click", function () {
+      if (!state.designer.enabled) {
+        return;
+      }
+      toggleDesignerOrderLock();
     });
   }
 
