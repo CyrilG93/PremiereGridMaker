@@ -5,7 +5,7 @@
   var cepBridge = window.cep || null;
   var csInterface = (typeof CSInterface !== "undefined") ? new CSInterface() : null;
   var i18n = window.PGM_I18N || { defaultLocale: "en", locales: {} };
-  var APP_VERSION = "1.3.2";
+  var APP_VERSION = "1.3.3";
   var RELEASE_API_URL = "https://api.github.com/repos/CyrilG93/PremiereGridMaker/releases/latest";
   var DESIGNER_GRID_SIZE = 10;
   var DESIGNER_FREE_SUBDIVISION = 10;
@@ -1132,6 +1132,144 @@
     };
   }
 
+  // The unified group frame only appears when more than one block is selected in edit mode.
+  function hasDesignerGroupSelection() {
+    return !!(state.designer.editMode && state.designer.selectedBlockIds.length > 1);
+  }
+
+  // Side + corner handles reuse the same resize engine by expressing which outer edges move.
+  function designerHandleMovesLeft(handleName) {
+    return handleName === "w" || handleName === "nw" || handleName === "sw";
+  }
+
+  function designerHandleMovesRight(handleName) {
+    return handleName === "e" || handleName === "ne" || handleName === "se";
+  }
+
+  function designerHandleMovesTop(handleName) {
+    return handleName === "n" || handleName === "nw" || handleName === "ne";
+  }
+
+  function designerHandleMovesBottom(handleName) {
+    return handleName === "s" || handleName === "sw" || handleName === "se";
+  }
+
+  // The group resize cannot shrink past the smallest factor that would make one block invalid.
+  function getDesignerGroupMinimumBounds(bounds, blocks) {
+    var minScaleX = 0;
+    var minScaleY = 0;
+
+    for (var i = 0; i < blocks.length; i += 1) {
+      minScaleX = Math.max(minScaleX, DESIGNER_MIN_BLOCK_SIZE / Math.max(blocks[i].w, DESIGNER_MIN_BLOCK_SIZE));
+      minScaleY = Math.max(minScaleY, DESIGNER_MIN_BLOCK_SIZE / Math.max(blocks[i].h, DESIGNER_MIN_BLOCK_SIZE));
+    }
+
+    return {
+      w: Math.max(DESIGNER_MIN_BLOCK_SIZE, Math.round(bounds.w * minScaleX * 1000) / 1000),
+      h: Math.max(DESIGNER_MIN_BLOCK_SIZE, Math.round(bounds.h * minScaleY * 1000) / 1000)
+    };
+  }
+
+  // Compute the new outer frame for a multi-selection resize while keeping it inside the 10x10 canvas.
+  function buildDesignerResizeBounds(bounds, handleName, dxCells, dyCells, step, minBounds) {
+    var left = bounds.x;
+    var top = bounds.y;
+    var right = bounds.x + bounds.w;
+    var bottom = bounds.y + bounds.h;
+    var minWidth = (minBounds && minBounds.w) ? minBounds.w : DESIGNER_MIN_BLOCK_SIZE;
+    var minHeight = (minBounds && minBounds.h) ? minBounds.h : DESIGNER_MIN_BLOCK_SIZE;
+
+    if (designerHandleMovesLeft(handleName)) {
+      left = clampStep(left + dxCells, 0, right - minWidth, step, left);
+    }
+    if (designerHandleMovesRight(handleName)) {
+      right = clampStep(right + dxCells, left + minWidth, DESIGNER_GRID_SIZE, step, right);
+    }
+    if (designerHandleMovesTop(handleName)) {
+      top = clampStep(top + dyCells, 0, bottom - minHeight, step, top);
+    }
+    if (designerHandleMovesBottom(handleName)) {
+      bottom = clampStep(bottom + dyCells, top + minHeight, DESIGNER_GRID_SIZE, step, bottom);
+    }
+
+    return {
+      x: Math.round(left * 1000) / 1000,
+      y: Math.round(top * 1000) / 1000,
+      w: Math.round((right - left) * 1000) / 1000,
+      h: Math.round((bottom - top) * 1000) / 1000
+    };
+  }
+
+  // Scale all selected blocks from the same outer frame so shared edges stay perfectly synchronized.
+  function buildDesignerGroupResizeCandidates(boundsBefore, boundsAfter, blocks, step) {
+    var candidates = [];
+    var scaleX = boundsBefore.w > 0 ? (boundsAfter.w / boundsBefore.w) : 1;
+    var scaleY = boundsBefore.h > 0 ? (boundsAfter.h / boundsBefore.h) : 1;
+
+    for (var i = 0; i < blocks.length; i += 1) {
+      var block = blocks[i];
+      var startLeft = block.x;
+      var startTop = block.y;
+      var startRight = block.x + block.w;
+      var startBottom = block.y + block.h;
+      // Recompute every edge from the same normalized space to preserve internal spacing and shared sides.
+      var nextLeft = boundsAfter.x + ((startLeft - boundsBefore.x) * scaleX);
+      var nextTop = boundsAfter.y + ((startTop - boundsBefore.y) * scaleY);
+      var nextRight = boundsAfter.x + ((startRight - boundsBefore.x) * scaleX);
+      var nextBottom = boundsAfter.y + ((startBottom - boundsBefore.y) * scaleY);
+
+      nextLeft = clampStep(nextLeft, 0, DESIGNER_GRID_SIZE - DESIGNER_MIN_BLOCK_SIZE, step, nextLeft);
+      nextTop = clampStep(nextTop, 0, DESIGNER_GRID_SIZE - DESIGNER_MIN_BLOCK_SIZE, step, nextTop);
+      nextRight = clampStep(nextRight, nextLeft + DESIGNER_MIN_BLOCK_SIZE, DESIGNER_GRID_SIZE, step, nextRight);
+      nextBottom = clampStep(nextBottom, nextTop + DESIGNER_MIN_BLOCK_SIZE, DESIGNER_GRID_SIZE, step, nextBottom);
+
+      candidates.push({
+        id: block.id,
+        x: Math.round(nextLeft * 1000) / 1000,
+        y: Math.round(nextTop * 1000) / 1000,
+        w: Math.round((nextRight - nextLeft) * 1000) / 1000,
+        h: Math.round((nextBottom - nextTop) * 1000) / 1000
+      });
+    }
+
+    return candidates;
+  }
+
+  // Apply a group resize preview in place only when every candidate remains valid.
+  function applyDesignerGroupResizeCandidates(candidates) {
+    if (!candidates || !candidates.length) {
+      return false;
+    }
+
+    var lookup = {};
+    for (var i = 0; i < candidates.length; i += 1) {
+      var candidate = candidates[i];
+      if (!designerCanPlace(candidate, candidate.id, true)) {
+        return false;
+      }
+      lookup[candidate.id] = candidate;
+    }
+
+    var changed = false;
+    for (var j = 0; j < state.designer.blocks.length; j += 1) {
+      var liveBlock = state.designer.blocks[j];
+      var next = lookup[liveBlock.id];
+      if (!next) {
+        continue;
+      }
+      if (liveBlock.x === next.x && liveBlock.y === next.y && liveBlock.w === next.w && liveBlock.h === next.h) {
+        continue;
+      }
+      liveBlock.x = next.x;
+      liveBlock.y = next.y;
+      liveBlock.w = next.w;
+      liveBlock.h = next.h;
+      changed = true;
+    }
+
+    return changed;
+  }
+
   // Center the current selection as a group on the canvas without changing block spacing.
   function alignSelectedDesignerBlocks(axis) {
     var selected = getSelectedDesignerBlocks();
@@ -1761,6 +1899,48 @@
     renderPreview();
   }
 
+  // Group resize uses the current selection bounds instead of a single block, with one shared outer frame.
+  function startDesignerGroupResize(event, handleName) {
+    if (!hasDesignerGroupSelection()) {
+      return;
+    }
+    if (!event || event.button !== 0) {
+      return;
+    }
+
+    var rect = grid.getBoundingClientRect();
+    if (!(rect.width > 0) || !(rect.height > 0)) {
+      return;
+    }
+
+    var selectedBlocks = getSelectedDesignerBlocks();
+    var selectionBounds = getDesignerSelectionBounds(selectedBlocks);
+    if (!selectionBounds) {
+      return;
+    }
+
+    designerDrag = {
+      ids: state.designer.selectedBlockIds.slice(),
+      id: state.designer.selectedBlockId,
+      action: "resize-group",
+      handleCorner: handleName || "se",
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      stageRect: rect,
+      startBlocks: cloneDesignerBlocks(selectedBlocks),
+      selectionBounds: selectionBounds,
+      minBounds: getDesignerGroupMinimumBounds(selectionBounds, selectedBlocks)
+    };
+
+    document.body.classList.add("designer-resizing");
+    document.body.setAttribute("data-designer-handle", designerDrag.handleCorner);
+    window.addEventListener("mousemove", onDesignerDragMove);
+    window.addEventListener("mouseup", onDesignerDragEnd);
+    event.preventDefault();
+    event.stopPropagation();
+    renderPreview();
+  }
+
   function onDesignerDragMove(event) {
     if (!designerDrag) {
       return;
@@ -1798,6 +1978,32 @@
         moved = true;
       }
       if (!moved) {
+        return;
+      }
+      renderPreview();
+      return;
+    }
+
+    if (designerDrag.action === "resize-group") {
+      var selectionBounds = designerDrag.selectionBounds;
+      if (!selectionBounds) {
+        return;
+      }
+      var resizedBounds = buildDesignerResizeBounds(
+        selectionBounds,
+        designerDrag.handleCorner,
+        dxCells,
+        dyCells,
+        dragStep,
+        designerDrag.minBounds
+      );
+      var resizeCandidates = buildDesignerGroupResizeCandidates(
+        selectionBounds,
+        resizedBounds,
+        designerDrag.startBlocks || [],
+        dragStep
+      );
+      if (!applyDesignerGroupResizeCandidates(resizeCandidates)) {
         return;
       }
       renderPreview();
@@ -1925,6 +2131,8 @@
 
     var blocks = state.designer.blocks.slice();
 
+    var showGroupFrame = hasDesignerGroupSelection();
+
     for (var i = 0; i < blocks.length; i += 1) {
       (function (block, index) {
         var cell = document.createElement("button");
@@ -1985,7 +2193,7 @@
         heightLabel.textContent = formatDesignerSizePercent(block.h);
         cell.appendChild(heightLabel);
 
-        if (state.designer.editMode) {
+        if (state.designer.editMode && !showGroupFrame) {
           ["nw", "ne", "sw", "se"].forEach(function (corner) {
             var handle = document.createElement("span");
             handle.className = "designer-resize-handle designer-resize-" + corner;
@@ -2017,6 +2225,34 @@
 
         grid.appendChild(cell);
       })(blocks[i], i);
+    }
+
+    if (showGroupFrame) {
+      var selectedBlocks = getSelectedDesignerBlocks();
+      var groupBounds = getDesignerSelectionBounds(selectedBlocks);
+      if (groupBounds) {
+        var selectionFrame = document.createElement("div");
+        selectionFrame.className = "designer-selection-frame";
+        selectionFrame.style.left = (groupBounds.x * 100 / DESIGNER_GRID_SIZE) + "%";
+        selectionFrame.style.top = (groupBounds.y * 100 / DESIGNER_GRID_SIZE) + "%";
+        selectionFrame.style.width = (groupBounds.w * 100 / DESIGNER_GRID_SIZE) + "%";
+        selectionFrame.style.height = (groupBounds.h * 100 / DESIGNER_GRID_SIZE) + "%";
+
+        // The outer frame provides one unified resize surface for the whole multi-selection.
+        ["n", "e", "s", "w", "nw", "ne", "sw", "se"].forEach(function (handleName) {
+          var selectionHandle = document.createElement("button");
+          selectionHandle.type = "button";
+          selectionHandle.className = "designer-selection-handle designer-selection-handle-" + handleName;
+          selectionHandle.title = t("designer.resize_hint");
+          selectionHandle.setAttribute("data-handle", handleName);
+          selectionHandle.addEventListener("mousedown", function (event) {
+            startDesignerGroupResize(event, handleName);
+          });
+          selectionFrame.appendChild(selectionHandle);
+        });
+
+        grid.appendChild(selectionFrame);
+      }
     }
   }
 
