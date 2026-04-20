@@ -1,4 +1,4 @@
-# Grid Maker - v1.3.7
+# Grid Maker - v1.4.0
 
 Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 
@@ -193,6 +193,16 @@ window.PGM_I18N.registerLocale({
 Then include it in `index.html` before `js/main.js`.
 
 ## Changelog
+
+### v1.4.0 - 2026-04-20
+
+- Added stronger Grid Designer selection tools with `Shift + click` multi-selection, clearer selection feedback, and quick return to single-block selection.
+- Added alignment actions to center the current Designer selection on the grid more easily.
+- Added unified multi-block resize with a shared outer frame so several blocks can be resized together while preserving their internal layout.
+- Improved Designer interaction reliability after multi-selection work:
+  - moving a multi-selection works correctly again
+  - non-edit preview stays visually cleaner
+  - active Designer toggle colors now follow a clearer edit/modification code.
 
 ### v1.3.0
 
