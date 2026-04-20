@@ -1,4 +1,4 @@
-# Grid Maker - v1.3.1
+# Grid Maker - v1.3.2
 
 Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 
@@ -14,7 +14,7 @@ Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 - Batch apply: map selected timeline clips to cells in one click (ordered by track from bottom to top)
 - No manual position presets required
 - Grid Designer mode (10x10 canvas): irregular layouts with draggable/resizable blocks
-- Designer multi-selection with `Shift + click` to move several blocks together
+- Designer multi-selection with `Shift + click` to move several blocks together, with clearer highlighting on all selected blocks
 - Designer alignment tools to center the current selection on the grid
 - Designer block order lock toggle (locked by default) so numbering stays stable until you explicitly unlock it
 - Designer resize handles on all 4 corners for faster freeform editing
