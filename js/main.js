@@ -5,7 +5,7 @@
   var cepBridge = window.cep || null;
   var csInterface = (typeof CSInterface !== "undefined") ? new CSInterface() : null;
   var i18n = window.PGM_I18N || { defaultLocale: "en", locales: {} };
-  var APP_VERSION = "1.4.1";
+  var APP_VERSION = "1.4.2";
   var RELEASE_API_URL = "https://api.github.com/repos/CyrilG93/PremiereGridMaker/releases/latest";
   var DESIGNER_GRID_SIZE = 10;
   var DESIGNER_FREE_SUBDIVISION = 10;
@@ -1838,28 +1838,17 @@
       return;
     }
 
-    // Shift-click toggles a block in the current selection without starting a drag.
-    if (action === "move" && isDesignerMultiSelectGesture(event)) {
-      var nextSelection = state.designer.selectedBlockIds.slice();
-      var selectedIndex = nextSelection.indexOf(blockId);
-      if (selectedIndex === -1) {
-        nextSelection.push(blockId);
-      } else {
-        nextSelection.splice(selectedIndex, 1);
-      }
-      setDesignerSelection(nextSelection, blockId);
-      renderPreview();
-      event.preventDefault();
-      event.stopPropagation();
-      return;
-    }
+    var selectionBeforeDrag = state.designer.selectedBlockIds.slice();
+    var pendingSelectionToggle = action === "move" && isDesignerMultiSelectGesture(event);
 
     // Moving a selected block keeps the whole selection together; resizing still targets one block.
     var dragIds = (action === "move" && isDesignerBlockSelected(blockId))
       ? state.designer.selectedBlockIds.slice()
       : [blockId];
     setDesignerSelection(dragIds, blockId);
-    designerBringSelectionToFront(dragIds);
+    if (!pendingSelectionToggle) {
+      designerBringSelectionToFront(dragIds);
+    }
 
     var startBlocks = [];
     for (var i = 0; i < dragIds.length; i += 1) {
@@ -1890,6 +1879,9 @@
       stageRect: rect,
       startBlock: startBlocks[0],
       startBlocks: startBlocks,
+      selectionBeforeDrag: selectionBeforeDrag,
+      pendingSelectionToggle: pendingSelectionToggle,
+      axisLock: "",
       didMutate: false
     };
 
@@ -1963,9 +1955,29 @@
     var dyCells = Math.round((event.clientY - designerDrag.startClientY) / stepY) * dragStep;
 
     if (designerDrag.action === "move") {
+      if (event.shiftKey) {
+        if (!designerDrag.axisLock && (Math.abs(dxCells) > 0 || Math.abs(dyCells) > 0)) {
+          // Lock to the dominant movement axis so free-mode drags do not drift by tiny increments.
+          designerDrag.axisLock = Math.abs(event.clientX - designerDrag.startClientX) >= Math.abs(event.clientY - designerDrag.startClientY)
+            ? "x"
+            : "y";
+        }
+        if (designerDrag.axisLock === "x") {
+          dyCells = 0;
+        } else if (designerDrag.axisLock === "y") {
+          dxCells = 0;
+        }
+      } else {
+        designerDrag.axisLock = "";
+      }
+
       var moveBlocks = designerDrag.startBlocks || [];
       var delta = clampDesignerGroupDelta(moveBlocks, dxCells, dyCells, dragStep);
       var moved = false;
+      if ((delta.dx !== 0 || delta.dy !== 0) && !designerDrag.didMutate) {
+        // Preserve existing unlocked-order behavior only after the drag actually moves.
+        designerBringSelectionToFront(designerDrag.ids);
+      }
       for (var i = 0; i < moveBlocks.length; i += 1) {
         var startBlock = moveBlocks[i];
         var liveBlock = findDesignerBlockById(startBlock.id);
@@ -2084,6 +2096,17 @@
     if (designerDrag.didMutate) {
       // Suppress the trailing click fired by the browser after a real drag/resize.
       designerSelectionClickSuppressUntil = Date.now() + 180;
+    }
+    if (!designerDrag.didMutate && designerDrag.pendingSelectionToggle) {
+      var nextSelection = (designerDrag.selectionBeforeDrag || []).slice();
+      var selectedIndex = nextSelection.indexOf(designerDrag.id);
+      if (selectedIndex === -1) {
+        nextSelection.push(designerDrag.id);
+      } else {
+        nextSelection.splice(selectedIndex, 1);
+      }
+      setDesignerSelection(nextSelection, designerDrag.id);
+      renderPreview();
     }
     designerDrag = null;
     document.body.classList.remove("designer-dragging");
@@ -2893,13 +2916,13 @@
     };
   }
 
-  // Scan from the selected block so duplicates prefer nearby empty slots before falling back to overlap.
+  // Scan from the selected block so duplicates prefer same-row empty slots before falling back to overlap.
   function findDesignerDuplicatePosition(source) {
     var step = getDesignerStep();
     var maxX = Math.max(0, DESIGNER_GRID_SIZE - source.w);
     var maxY = Math.max(0, DESIGNER_GRID_SIZE - source.h);
-    var preferredX = clampStep(source.x + step, 0, maxX, step, 0);
-    var preferredY = clampStep(source.y + step, 0, maxY, step, 0);
+    var preferredX = clampNumber(source.x + source.w, 0, maxX, 0);
+    var preferredY = clampNumber(source.y, 0, maxY, 0);
     var xs = buildDesignerDuplicateAxisPositions(maxX, step, preferredX);
     var ys = buildDesignerDuplicateAxisPositions(maxY, step, preferredY);
     var overlapSlot = null;
