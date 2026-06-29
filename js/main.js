@@ -5,7 +5,7 @@
   var cepBridge = window.cep || null;
   var csInterface = (typeof CSInterface !== "undefined") ? new CSInterface() : null;
   var i18n = window.PGM_I18N || { defaultLocale: "en", locales: {} };
-  var APP_VERSION = "1.4.0";
+  var APP_VERSION = "1.4.1";
   var RELEASE_API_URL = "https://api.github.com/repos/CyrilG93/PremiereGridMaker/releases/latest";
   var DESIGNER_GRID_SIZE = 10;
   var DESIGNER_FREE_SUBDIVISION = 10;
@@ -101,6 +101,7 @@
   var designerFreeBtn = document.getElementById("designerFreeBtn");
   var designerCaptureBtn = document.getElementById("designerCaptureBtn");
   var designerAddBtn = document.getElementById("designerAddBtn");
+  var designerDuplicateBtn = document.getElementById("designerDuplicateBtn");
   var designerRemoveBtn = document.getElementById("designerRemoveBtn");
   var designerNewBtn = document.getElementById("designerNewBtn");
   var designerSaveBtn = document.getElementById("designerSaveBtn");
@@ -2860,6 +2861,65 @@
     return null;
   }
 
+  function buildDesignerDuplicateAxisPositions(maxValue, step, preferredValue) {
+    var positions = [];
+    var seen = {};
+
+    function addPosition(value) {
+      var normalized = Math.round(clampNumber(value, 0, maxValue, 0) * 1000) / 1000;
+      var key = String(normalized);
+      if (seen[key]) {
+        return;
+      }
+      seen[key] = true;
+      positions.push(normalized);
+    }
+
+    addPosition(preferredValue);
+    for (var value = 0; value <= maxValue + 0.000001; value += step) {
+      addPosition(value);
+    }
+    addPosition(maxValue);
+    return positions;
+  }
+
+  function buildDesignerDuplicateCandidate(source, x, y) {
+    return {
+      id: "",
+      x: Math.round(x * 1000) / 1000,
+      y: Math.round(y * 1000) / 1000,
+      w: source.w,
+      h: source.h
+    };
+  }
+
+  // Scan from the selected block so duplicates prefer nearby empty slots before falling back to overlap.
+  function findDesignerDuplicatePosition(source) {
+    var step = getDesignerStep();
+    var maxX = Math.max(0, DESIGNER_GRID_SIZE - source.w);
+    var maxY = Math.max(0, DESIGNER_GRID_SIZE - source.h);
+    var preferredX = clampStep(source.x + step, 0, maxX, step, 0);
+    var preferredY = clampStep(source.y + step, 0, maxY, step, 0);
+    var xs = buildDesignerDuplicateAxisPositions(maxX, step, preferredX);
+    var ys = buildDesignerDuplicateAxisPositions(maxY, step, preferredY);
+    var overlapSlot = null;
+
+    for (var yIndex = 0; yIndex < ys.length; yIndex += 1) {
+      for (var xIndex = 0; xIndex < xs.length; xIndex += 1) {
+        var candidate = buildDesignerDuplicateCandidate(source, xs[xIndex], ys[yIndex]);
+        var samePosition = Math.abs(candidate.x - source.x) < 0.000001 && Math.abs(candidate.y - source.y) < 0.000001;
+        if (!overlapSlot && !samePosition && designerCanPlace(candidate, "", true)) {
+          overlapSlot = candidate;
+        }
+        if (designerCanPlace(candidate, "", false)) {
+          return candidate;
+        }
+      }
+    }
+
+    return overlapSlot || buildDesignerDuplicateCandidate(source, source.x, source.y);
+  }
+
   function addDesignerBlock() {
     var preferredSizes = [
       { w: 2, h: 2 },
@@ -2893,6 +2953,29 @@
     setDesignerSelection([block.id], block.id);
     appendDebug("UI> designer block added id=" + block.id + " x=" + block.x + " y=" + block.y + " w=" + block.w + " h=" + block.h);
     setStatusKey("status.designer_block_added", {}, "ok");
+    renderPreview();
+  }
+
+  function duplicateSelectedDesignerBlock() {
+    var source = findDesignerBlockById(state.designer.selectedBlockId);
+    if (!source) {
+      setStatusKey("status.designer_block_select", {}, "err");
+      return;
+    }
+
+    var slot = findDesignerDuplicatePosition(source);
+    var block = {
+      id: nextDesignerBlockId(),
+      x: slot.x,
+      y: slot.y,
+      w: source.w,
+      h: source.h
+    };
+
+    state.designer.blocks.push(block);
+    setDesignerSelection([block.id], block.id);
+    appendDebug("UI> designer block duplicated source=" + source.id + " id=" + block.id + " x=" + block.x + " y=" + block.y + " w=" + block.w + " h=" + block.h);
+    setStatusKey("status.designer_block_duplicated", {}, "ok");
     renderPreview();
   }
 
@@ -3263,6 +3346,15 @@
         return;
       }
       captureDesignerBlockFromSelectedClip();
+    });
+  }
+
+  if (designerDuplicateBtn) {
+    designerDuplicateBtn.addEventListener("click", function () {
+      if (!state.designer.enabled) {
+        return;
+      }
+      duplicateSelectedDesignerBlock();
     });
   }
 

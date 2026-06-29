@@ -265,7 +265,8 @@ input[type="range"] {
 
 .designer-actions {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  /* Keep the edit action row balanced after adding the duplicate control. */
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 6px;
   min-width: 0;
 }
@@ -273,6 +274,11 @@ input[type="range"] {
 .designer-actions:not(.designer-actions-config) button {
   padding: 5px 6px;
   font-size: 11px;
+  /* Prevent localized action labels from overflowing in narrow CEP panels. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.1;
 }
 
 .designer-actions-config {
