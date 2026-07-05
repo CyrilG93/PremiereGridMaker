@@ -5,7 +5,8 @@
   var cepBridge = window.cep || null;
   var csInterface = (typeof CSInterface !== "undefined") ? new CSInterface() : null;
   var i18n = window.PGM_I18N || { defaultLocale: "en", locales: {} };
-  var APP_VERSION = "1.5.0";
+  var APP_VERSION = "1.5.1";
+  var PRODUCT_PAGE_URL = "https://www.cyrilplugin.com/grid-maker";
   var RELEASE_API_URL = "https://api.github.com/repos/CyrilG93/PremiereGridMaker/releases/latest";
   var DESIGNER_GRID_SIZE = 10;
   var DESIGNER_FREE_SUBDIVISION = 10;
@@ -638,6 +639,31 @@
 
     appendDebug("UI> failed to open update URL");
     return false;
+  }
+
+  function openProductPage() {
+    // Product pages are not release ZIPs, so they use the generic CEP/browser opener.
+    appendDebug("UI> version badge clicked: " + PRODUCT_PAGE_URL);
+    openExternalUrlFallback(PRODUCT_PAGE_URL);
+  }
+
+  function bindVersionBadgeLink() {
+    if (!appVersion) {
+      return;
+    }
+
+    // Keep the existing inline badge dimensions while making it mouse and keyboard clickable.
+    appVersion.setAttribute("role", "button");
+    appVersion.setAttribute("tabindex", "0");
+    appVersion.setAttribute("title", "Open Grid Maker page");
+    appVersion.setAttribute("aria-label", "Open Grid Maker page for version " + APP_VERSION);
+    appVersion.addEventListener("click", openProductPage);
+    appVersion.addEventListener("keydown", function (event) {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openProductPage();
+      }
+    });
   }
 
   // Generic numeric/string helpers shared by grid + designer flows.
@@ -3520,6 +3546,7 @@
 
   if (appVersion) {
     appVersion.textContent = "V" + APP_VERSION;
+    bindVersionBadgeLink();
   }
 
   if (updateLink) {

@@ -78,6 +78,7 @@ h1 {
   color: var(--muted);
   font-size: 11px;
   white-space: nowrap;
+  cursor: pointer;
 }
 
 .header-btn,
