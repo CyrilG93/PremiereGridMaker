@@ -1,4 +1,4 @@
-# Grid Maker - v1.5.1
+# Grid Maker - v1.5.2
 
 Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 
@@ -27,6 +27,7 @@ Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 - Designer preset import/export in JSON (team sharing + backup)
 - Panel state persistence between sessions (reopens the same classic/designer view and UI context)
 - UI localization: English (default), French, Spanish, German, Portuguese (Brazil), Japanese, Italian, Chinese (Simplified), Russian
+- Premiere Theme Support: panel colors follow Premiere Pro's light and dark interface colors
 - Built-in update check against latest GitHub release (with direct ZIP download button when newer version exists)
 
 ## Installation

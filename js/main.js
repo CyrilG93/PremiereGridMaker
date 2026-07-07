@@ -5,9 +5,10 @@
   var cepBridge = window.cep || null;
   var csInterface = (typeof CSInterface !== "undefined") ? new CSInterface() : null;
   var i18n = window.PGM_I18N || { defaultLocale: "en", locales: {} };
-  var APP_VERSION = "1.5.1";
+  var APP_VERSION = "1.5.2";
   var PRODUCT_PAGE_URL = "https://www.cyrilplugin.com/grid-maker";
   var RELEASE_API_URL = "https://api.github.com/repos/CyrilG93/PremiereGridMaker/releases/latest";
+  var CEP_THEME_COLOR_CHANGED_EVENT = "com.adobe.csxs.events.ThemeColorChanged";
   var DESIGNER_GRID_SIZE = 10;
   var DESIGNER_FREE_SUBDIVISION = 10;
   var DESIGNER_MIN_BLOCK_SIZE = 1 / DESIGNER_FREE_SUBDIVISION;
@@ -69,6 +70,147 @@
   var lastPanelStateSerialized = "";
   var APPLY_RETRY_DELAY_MS = 450;
   var APPLY_MAX_RETRIES = 0;
+
+  function clampThemeChannel(value) {
+    // Keep CEP RGB channels inside the valid CSS color range.
+    var numericValue = Number(value);
+    if (!isFinite(numericValue)) {
+      return null;
+    }
+
+    return Math.max(0, Math.min(255, Math.round(numericValue)));
+  }
+
+  function readThemeRgbTriplet(value) {
+    // Read direct CEP RGB payloads shaped as { red, green, blue }.
+    if (!value || typeof value !== "object") {
+      return null;
+    }
+
+    var red = clampThemeChannel(value.red);
+    var green = clampThemeChannel(value.green);
+    var blue = clampThemeChannel(value.blue);
+    if (red === null || green === null || blue === null) {
+      return null;
+    }
+
+    return { red: red, green: green, blue: blue };
+  }
+
+  function readThemeColor(value) {
+    // Support both CEP RGBColor and UIColor.color shapes from appSkinInfo.
+    return readThemeRgbTriplet(value) || (value && readThemeRgbTriplet(value.color));
+  }
+
+  function mixThemeColor(left, right, rightWeight) {
+    // Blend two RGB colors so derived surfaces stay near Premiere's host color.
+    var clampedWeight = Math.max(0, Math.min(1, rightWeight));
+    var leftWeight = 1 - clampedWeight;
+    return {
+      red: Math.round(left.red * leftWeight + right.red * clampedWeight),
+      green: Math.round(left.green * leftWeight + right.green * clampedWeight),
+      blue: Math.round(left.blue * leftWeight + right.blue * clampedWeight)
+    };
+  }
+
+  function offsetThemeColor(color, delta) {
+    // Nudge a neutral color brighter or darker without leaving RGB bounds.
+    return {
+      red: Math.max(0, Math.min(255, Math.round(color.red + delta))),
+      green: Math.max(0, Math.min(255, Math.round(color.green + delta))),
+      blue: Math.max(0, Math.min(255, Math.round(color.blue + delta)))
+    };
+  }
+
+  function themeLuminance(color) {
+    // Estimate perceived brightness to separate Light, Dark, and Darkest Premiere skins.
+    return (0.2126 * color.red + 0.7152 * color.green + 0.0722 * color.blue) / 255;
+  }
+
+  function normalizePanelBackground(color) {
+    // Keep the main panel close to Premiere's host background, including Darkest mode.
+    var luminance = themeLuminance(color);
+    if (luminance <= 0.16) {
+      return mixThemeColor(color, { red: 24, green: 24, blue: 24 }, luminance <= 0.04 ? 0.65 : 0.12);
+    }
+    if (luminance <= 0.32) {
+      return mixThemeColor(color, { red: 58, green: 58, blue: 58 }, 0.42);
+    }
+    if (luminance >= 0.7) {
+      return mixThemeColor(color, { red: 246, green: 246, blue: 246 }, 0.72);
+    }
+    if (luminance >= 0.55) {
+      return mixThemeColor(color, { red: 242, green: 242, blue: 242 }, 0.5);
+    }
+
+    return color;
+  }
+
+  function setThemeColorVariable(name, color) {
+    // Publish each token as a normal CSS color and as an RGB triplet for rgba().
+    document.documentElement.style.setProperty(name, "rgb(" + color.red + ", " + color.green + ", " + color.blue + ")");
+    document.documentElement.style.setProperty(name + "-rgb", color.red + ", " + color.green + ", " + color.blue);
+  }
+
+  function readHostSkinInfo() {
+    // Read the current CEP host theme; return null during local browser testing.
+    try {
+      if (!window.__adobe_cep__ || typeof window.__adobe_cep__.getHostEnvironment !== "function") {
+        return null;
+      }
+
+      var hostEnvironment = JSON.parse(window.__adobe_cep__.getHostEnvironment());
+      return hostEnvironment && hostEnvironment.appSkinInfo ? hostEnvironment.appSkinInfo : null;
+    } catch (e1) {
+      appendDebug("THEME> unable to read Premiere theme: " + e1.message);
+      return null;
+    }
+  }
+
+  function applyPremierePanelTheme() {
+    // Convert Premiere appSkinInfo into stable panel tokens used by the CSS.
+    var skinInfo = readHostSkinInfo();
+    if (!skinInfo) {
+      return;
+    }
+
+    var panelBackground = readThemeColor(skinInfo.panelBackgroundColorSRGB) ||
+      readThemeColor(skinInfo.panelBackgroundColor) ||
+      { red: 48, green: 48, blue: 48 };
+    var highlightColor = readThemeColor(skinInfo.systemHighlightColor) || { red: 70, green: 137, blue: 255 };
+    var hostLuminance = themeLuminance(panelBackground);
+    var base = normalizePanelBackground(panelBackground);
+    var isLightTheme = hostLuminance >= 0.55;
+    var isDarkestTheme = hostLuminance <= 0.18;
+    var textPrimary = isLightTheme ? { red: 36, green: 36, blue: 36 } : { red: 236, green: 236, blue: 236 };
+    var textMuted = mixThemeColor(textPrimary, base, isLightTheme ? 0.58 : 0.44);
+    var accentSeed = mixThemeColor(highlightColor, { red: 0, green: 100, blue: 203 }, 0.72);
+    var accent = isLightTheme ? offsetThemeColor(accentSeed, -8) : offsetThemeColor(accentSeed, 10);
+
+    document.documentElement.dataset.themeVariant = isLightTheme ? "light" : isDarkestTheme ? "darkest" : "dark";
+    setThemeColorVariable("--bg", base);
+    setThemeColorVariable("--panel", offsetThemeColor(base, isLightTheme ? -7 : isDarkestTheme ? 8 : 6));
+    setThemeColorVariable("--panel-soft", offsetThemeColor(base, isLightTheme ? -14 : isDarkestTheme ? -2 : -1));
+    setThemeColorVariable("--line", offsetThemeColor(base, isLightTheme ? -28 : 16));
+    setThemeColorVariable("--text", textPrimary);
+    setThemeColorVariable("--muted", textMuted);
+    setThemeColorVariable("--accent", accent);
+    document.documentElement.style.setProperty("--accent-rgb", accent.red + ", " + accent.green + ", " + accent.blue);
+
+    var baseFontFamily = String(skinInfo.baseFontFamily || "").trim();
+    if (baseFontFamily) {
+      document.documentElement.style.setProperty("--ui-font-family", '"' + baseFontFamily + '", "Segoe UI", sans-serif');
+    }
+  }
+
+  function bindPremiereThemeListener() {
+    // Subscribe once so the panel follows Premiere light/dark changes without a reload.
+    if (!window.__adobe_cep__ || typeof window.__adobe_cep__.addEventListener !== "function") {
+      return;
+    }
+
+    window.__adobe_cep__.addEventListener(CEP_THEME_COLOR_CHANGED_EVENT, applyPremierePanelTheme);
+  }
 
   // Cache DOM references once to keep rendering and event handlers simple.
   var rowsRange = document.getElementById("rows");
@@ -3567,6 +3709,8 @@
   }
 
   // Initial boot sequence for UI state, i18n, preview and update check.
+  applyPremierePanelTheme();
+  bindPremiereThemeListener();
   var restoredPanelState = restorePanelStateFromStorage();
   applyDesignerGallerySize(state.designer.gallerySize, false);
   applyGlobalMarginPx(state.marginPx, false);
