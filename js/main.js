@@ -5,7 +5,7 @@
   var cepBridge = window.cep || null;
   var csInterface = (typeof CSInterface !== "undefined") ? new CSInterface() : null;
   var i18n = window.PGM_I18N || { defaultLocale: "en", locales: {} };
-  var APP_VERSION = "1.5.2";
+  var APP_VERSION = "1.5.3";
   var PRODUCT_PAGE_URL = "https://www.cyrilplugin.com/grid-maker";
   var RELEASE_API_URL = "https://api.github.com/repos/CyrilG93/PremiereGridMaker/releases/latest";
   var CEP_THEME_COLOR_CHANGED_EVENT = "com.adobe.csxs.events.ThemeColorChanged";
@@ -68,8 +68,9 @@
   };
   var panelStatePersistTimer = 0;
   var lastPanelStateSerialized = "";
-  var APPLY_RETRY_DELAY_MS = 450;
-  var APPLY_MAX_RETRIES = 0;
+  // Retry transient QE effect visibility failures after the host script returns control.
+  var APPLY_RETRY_DELAY_MS = 650;
+  var APPLY_MAX_RETRIES = 2;
 
   function clampThemeChannel(value) {
     // Keep CEP RGB channels inside the valid CSS color range.

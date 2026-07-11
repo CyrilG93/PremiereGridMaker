@@ -1,8 +1,8 @@
 {
   "name": "premiere-grid-maker",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "private": true,
-  "description": "Adobe Premiere Pro CEP panel to place clips in grid cells with Transform + Crop.",
+  "description": "Adobe Premiere Pro CEP panel to place clips in grid cells with Motion and Crop.",
   "scripts": {
     "check": "echo No build step required"
   }

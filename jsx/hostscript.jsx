@@ -1,4 +1,4 @@
-// Expose host-side capability flags so the panel can adapt UI controls by Premiere version.
+// Expose host-side capability flags so the panel can adapt UI controls to this host.
 function gridMaker_getHostCapabilities() {
     try {
         return _gridMaker_jsonStringify({
@@ -115,24 +115,7 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH, mar
             dbg("QE sequence unavailable (non-blocking unless effect ensure is required)");
         }
 
-        if (!transformComp) {
-            if (!qSeq) {
-                dbg("QE sequence unavailable (transform required)");
-                return _gridMaker_result("ERR", "qe_unavailable", null, debugLines);
-            }
-            if (!qClip) {
-                dbg("QE clip not found (transform required)");
-                return _gridMaker_result("ERR", "qe_clip_not_found", null, debugLines);
-            }
-            transformComp = _gridMaker_ensureManagedEffect(
-                clip,
-                qClip,
-                "transform",
-                _gridMaker_transformEffectLookupNames(),
-                debugLines
-            );
-            dbg("Transform component after ensure=" + _gridMaker_componentLabel(transformComp));
-        }
+        transformComp = _gridMaker_tryEnsureOptionalTransform(clip, qSeq, qClip, debugLines);
 
         if (!cropComp || !placementComp) {
             if (!qSeq) {
@@ -163,12 +146,7 @@ function gridMaker_applyToSelectedClip(row, col, rows, cols, ratioW, ratioH, mar
             dbg("Motion component unavailable");
             return _gridMaker_result("ERR", "motion_effect_unavailable", null, debugLines);
         }
-        if (!transformComp) {
-            dbg("Transform effect unavailable (required)");
-            return _gridMaker_result("ERR", "transform_effect_unavailable", null, debugLines);
-        }
-        _gridMaker_enableTransformUniformScale(transformComp, debugLines);
-        dbg("Transform strategy: required and kept as neutral effect (no parameter writes)");
+        dbg("Transform strategy: optional neutral effect; placement does not require it");
         dbg("Placement strategy: Motion only");
 
         var frameSize = _gridMaker_getSequenceFrameSize(seq, qSeq);
@@ -432,24 +410,7 @@ function gridMaker_applyToSelectedCustomCell(leftNorm, topNorm, widthNorm, heigh
             dbg("QE sequence unavailable (non-blocking unless effect ensure is required)");
         }
 
-        if (!transformComp) {
-            if (!qSeq) {
-                dbg("QE sequence unavailable (transform required)");
-                return _gridMaker_result("ERR", "qe_unavailable", null, debugLines);
-            }
-            if (!qClip) {
-                dbg("QE clip not found (transform required)");
-                return _gridMaker_result("ERR", "qe_clip_not_found", null, debugLines);
-            }
-            transformComp = _gridMaker_ensureManagedEffect(
-                clip,
-                qClip,
-                "transform",
-                _gridMaker_transformEffectLookupNames(),
-                debugLines
-            );
-            dbg("Transform component after ensure=" + _gridMaker_componentLabel(transformComp));
-        }
+        transformComp = _gridMaker_tryEnsureOptionalTransform(clip, qSeq, qClip, debugLines);
 
         if (!cropComp || !placementComp) {
             if (!qSeq) {
@@ -480,12 +441,7 @@ function gridMaker_applyToSelectedCustomCell(leftNorm, topNorm, widthNorm, heigh
             dbg("Motion component unavailable");
             return _gridMaker_result("ERR", "motion_effect_unavailable", null, debugLines);
         }
-        if (!transformComp) {
-            dbg("Transform effect unavailable (required)");
-            return _gridMaker_result("ERR", "transform_effect_unavailable", null, debugLines);
-        }
-        _gridMaker_enableTransformUniformScale(transformComp, debugLines);
-        dbg("Transform strategy: required and kept as neutral effect (no parameter writes)");
+        dbg("Transform strategy: optional neutral effect; placement does not require it");
         dbg("Placement strategy: Motion only");
 
         var frameSize = _gridMaker_getSequenceFrameSize(seq, qSeq);
@@ -1063,24 +1019,7 @@ function _gridMaker_applyNormalizedCellToClip(clip, seq, leftNorm, topNorm, widt
     _gridMaker_debugPush(debugLines, "Components pre-check placement=" + _gridMaker_componentLabel(placementComp) + " transform=" + _gridMaker_componentLabel(transformComp) + " motion=" + _gridMaker_componentLabel(motionComp) + " crop=" + _gridMaker_componentLabel(cropComp));
     _gridMaker_dumpPlacementComponents(clip, debugLines, "BEFORE");
 
-    if (!transformComp) {
-        if (!qSeq) {
-            _gridMaker_debugPush(debugLines, "QE sequence unavailable (transform required)");
-            return { ok: false, code: "qe_unavailable" };
-        }
-        if (!qClip) {
-            _gridMaker_debugPush(debugLines, "QE clip not found (transform required)");
-            return { ok: false, code: "qe_clip_not_found" };
-        }
-        transformComp = _gridMaker_ensureManagedEffect(
-            clip,
-            qClip,
-            "transform",
-            _gridMaker_transformEffectLookupNames(),
-            debugLines
-        );
-        _gridMaker_debugPush(debugLines, "Transform component after ensure=" + _gridMaker_componentLabel(transformComp));
-    }
+    transformComp = _gridMaker_tryEnsureOptionalTransform(clip, qSeq, qClip, debugLines);
 
     if (!cropComp || !placementComp) {
         if (!qSeq) {
@@ -1111,12 +1050,7 @@ function _gridMaker_applyNormalizedCellToClip(clip, seq, leftNorm, topNorm, widt
         _gridMaker_debugPush(debugLines, "Motion component unavailable");
         return { ok: false, code: "motion_effect_unavailable" };
     }
-    if (!transformComp) {
-        _gridMaker_debugPush(debugLines, "Transform effect unavailable (required)");
-        return { ok: false, code: "transform_effect_unavailable" };
-    }
-    _gridMaker_enableTransformUniformScale(transformComp, debugLines);
-    _gridMaker_debugPush(debugLines, "Transform strategy: required and kept as neutral effect (no parameter writes)");
+    _gridMaker_debugPush(debugLines, "Transform strategy: optional neutral effect; placement does not require it");
     _gridMaker_debugPush(debugLines, "Placement strategy: Motion only");
 
     var frameSize = _gridMaker_getSequenceFrameSize(seq, qSeq);
@@ -1640,6 +1574,36 @@ function _gridMaker_ensureManagedCropComponent(clip, qClip, preferRounded, debug
     );
 }
 
+// Transform is useful as a neutral managed marker, but Motion performs the placement.
+function _gridMaker_tryEnsureOptionalTransform(clip, qSeq, qClip, debugLines) {
+    var transformComp = _gridMaker_findManagedTransformComponent(clip);
+    if (transformComp) {
+        _gridMaker_debugPush(debugLines, "Transform component found: " + _gridMaker_componentLabel(transformComp));
+        _gridMaker_enableTransformUniformScale(transformComp, debugLines);
+        return transformComp;
+    }
+
+    if (!qSeq || !qClip) {
+        _gridMaker_debugPush(debugLines, "Transform optional ensure skipped because QE clip is unavailable");
+        return null;
+    }
+
+    transformComp = _gridMaker_ensureManagedEffect(
+        clip,
+        qClip,
+        "transform",
+        _gridMaker_transformEffectLookupNames(),
+        debugLines
+    );
+    _gridMaker_debugPush(debugLines, "Transform component after optional ensure=" + _gridMaker_componentLabel(transformComp));
+    if (transformComp) {
+        _gridMaker_enableTransformUniformScale(transformComp, debugLines);
+    } else {
+        _gridMaker_debugPush(debugLines, "Transform still unavailable; continuing with Motion-only placement");
+    }
+    return transformComp;
+}
+
 function _gridMaker_sleepSafe(ms) {
     try {
         if (typeof $ !== "undefined" && $.sleep) {
@@ -1825,18 +1789,36 @@ function _gridMaker_parseVersionTuple(rawVersion) {
 }
 
 function _gridMaker_supportsRoundedCropEffect() {
-    // Rounded Crop exists from Premiere Pro 25.5+.
+    // Rounded Crop exists from Premiere Pro 25.5+, then QE must resolve it by name.
     var tuple = _gridMaker_parseVersionTuple(_gridMaker_getHostVersionString());
     if (!tuple) {
         return false;
     }
-    if (tuple.major > 25) {
-        return true;
-    }
     if (tuple.major < 25) {
         return false;
     }
-    return tuple.minor >= 5;
+    if (tuple.major === 25 && tuple.minor < 5) {
+        return false;
+    }
+    return _gridMaker_canResolveAnyVideoEffect(_gridMaker_roundedCropEffectLookupNames());
+}
+
+function _gridMaker_canResolveAnyVideoEffect(lookupNames) {
+    // Resolve through QE so capability checks reflect the effects this host can actually add.
+    try {
+        app.enableQE();
+    } catch (e0) {}
+    if (!lookupNames || lookupNames.length < 1) {
+        return false;
+    }
+    for (var i = 0; i < lookupNames.length; i++) {
+        try {
+            if (qe.project.getVideoEffectByName(lookupNames[i])) {
+                return true;
+            }
+        } catch (e1) {}
+    }
+    return false;
 }
 
 function _gridMaker_isRoundedCropComponent(component) {

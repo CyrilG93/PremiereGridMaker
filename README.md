@@ -1,4 +1,4 @@
-# Grid Maker - v1.5.2
+# Grid Maker - v1.5.3
 
 Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 
@@ -6,11 +6,11 @@ Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 
 - Grid size with two sliders: rows x columns (1 to 10)
 - Ratio preset selector: `16:9`, `1:1`, `9:16`, `4:5`, `3:2`
-- Auto crop effect selection by Premiere version: `Rounded Crop` on `25.5+`, classic `Crop` fallback on older versions
+- Auto crop effect selection: `Rounded Crop` when the host can resolve it, classic `Crop` fallback otherwise
 - Roundness slider (`%`) for rounded corners in normal + designer workflows (auto-hidden on non-compatible hosts)
 - Global margin slider (px) applied to outer margins and spacing between cells/blocks
 - Clickable live grid preview
-- One-click placement to a target cell using `Transform` + `Crop`
+- One-click placement to a target cell using `Motion`, with `Crop` / `Rounded Crop` when available
 - Batch apply: map selected timeline clips to cells in one click (ordered by track from bottom to top)
 - No manual position presets required
 - Grid Designer mode (10x10 canvas): irregular layouts with draggable/resizable blocks
@@ -100,8 +100,8 @@ for v in {8..15}; do defaults write "com.adobe.CSXS.$v" PlayerDebugMode 1; done
 4. Optional: adjust global margin (px) and roundness (% when supported).
 5. Click a target cell in the preview.
 
-The extension adds/uses `Transform` and a crop effect, then positions/scales the selected clip for the target grid cell.
-On Premiere `25.5+`, it prefers `Rounded Crop` so corner roundness can be applied; on older hosts it falls back to classic `Crop`.
+The extension positions/scales the selected clip with `Motion`, then uses a crop effect when the target cell requires cropping.
+On Premiere `25.5+`, it prefers `Rounded Crop` when QE can resolve it so corner roundness can be applied; otherwise it falls back to classic `Crop` behavior.
 
 ### Batch apply
 
@@ -153,7 +153,7 @@ If your team uses a Fit workflow, keep it consistent on all clips before using G
 ## Compatibility
 
 - Host: Adobe Premiere Pro 2025+ (`PPRO 25.0+`)
-- `Rounded Crop` + `Roundness` controls: available on `PPRO 25.5+` (hidden/ignored on older versions)
+- `Rounded Crop` + `Roundness` controls: available when the host is `PPRO 25.5+` and QE can resolve the effect (hidden/ignored otherwise)
 - OS: Windows and macOS
 - Technology: CEP panel + ExtendScript/QE API
 
