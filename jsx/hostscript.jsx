@@ -1926,7 +1926,7 @@ function _gridMaker_isRoundedCropComponent(component) {
         matchName = component.matchName ? component.matchName.toLowerCase() : "";
     } catch (e2) {}
 
-    return _gridMaker_containsAny(displayName, ["rounded crop"]) || _gridMaker_containsAny(matchName, ["ae.impact_crop_fx", "impact_crop_fx"]);
+    return _gridMaker_containsAny(displayName, ["rounded crop", "recadrage arrondi"]) || _gridMaker_containsAny(matchName, ["ae.impact_crop_fx", "impact_crop_fx"]);
 }
 
 function _gridMaker_defaultLabelForType(type) {
@@ -2571,6 +2571,7 @@ function _gridMaker_transformUniformLinkIsEffective(uniformProp, widthProp, heig
 // Effect/component lookup tables and matching helpers.
 function _gridMaker_transformEffectLookupNames() {
     return [
+        "Transformer",
         "Transform",
         "Transformation",
         "Trasformazione",
@@ -2584,6 +2585,7 @@ function _gridMaker_transformEffectLookupNames() {
 
 function _gridMaker_roundedCropEffectLookupNames() {
     return [
+        "Recadrage arrondi",
         "Rounded Crop",
         "AE.Impact_Crop_FX",
         "Impact Crop"
