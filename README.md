@@ -1,4 +1,4 @@
-# Grid Maker - v1.5.3
+# Grid Maker - v1.5.4
 
 Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 

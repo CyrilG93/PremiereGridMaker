@@ -1604,6 +1604,93 @@ function _gridMaker_tryEnsureOptionalTransform(clip, qSeq, qClip, debugLines) {
     return transformComp;
 }
 
+function _gridMaker_addVideoEffectToQEClip(qClip, fx, effectName, type, debugLines) {
+    // Some Premiere QE builds only mutate the real selected timeline item.
+    var selectedOk = _gridMaker_trySetQEItemSelected(qClip, true, true, debugLines);
+    var modes = ["direct-boolean", "direct"];
+    for (var i = 0; i < modes.length; i++) {
+        try {
+            var addReturn = null;
+            if (modes[i] === "direct-boolean") {
+                addReturn = qClip.addVideoEffect(fx, true);
+            } else {
+                addReturn = qClip.addVideoEffect(fx);
+            }
+            if (addReturn === false) {
+                _gridMaker_debugPush(
+                    debugLines,
+                    "QE addVideoEffect returned false type=" + type +
+                    " effect='" + effectName + "' mode=" + modes[i]
+                );
+                continue;
+            }
+            _gridMaker_refreshHostUI();
+            _gridMaker_sleepSafe(120);
+            _gridMaker_debugPush(
+                debugLines,
+                "QE addVideoEffect ok type=" + type +
+                " effect='" + effectName + "' mode=" + modes[i] +
+                " selectedOk=" + selectedOk +
+                " return=" + addReturn
+            );
+            return { ok: true, mode: modes[i], qClip: qClip };
+        } catch (e1) {
+            _gridMaker_debugPush(
+                debugLines,
+                "QE addVideoEffect failed type=" + type +
+                " effect='" + effectName + "' mode=" + modes[i] +
+                " error=" + e1
+            );
+        }
+    }
+    return { ok: false, mode: "failed", qClip: qClip };
+}
+
+function _gridMaker_trySetQEItemSelected(item, selected, deselectOthers, debugLines) {
+    if (!item || typeof item.setSelected !== "function") {
+        _gridMaker_debugPush(debugLines, "QE setSelected unavailable for item=" + _gridMaker_qeClipDebugLabel(item));
+        return false;
+    }
+    try {
+        item.setSelected(selected === true, deselectOthers === true);
+        return true;
+    } catch (e1) {}
+    try {
+        item.setSelected(selected === true ? 1 : 0, deselectOthers === true ? 1 : 0);
+        return true;
+    } catch (e2) {}
+    try {
+        item.setSelected(selected === true);
+        return true;
+    } catch (e3) {}
+    _gridMaker_debugPush(debugLines, "QE setSelected failed for item=" + _gridMaker_qeClipDebugLabel(item));
+    return false;
+}
+
+function _gridMaker_refreshQEClipHandle(clip, fallbackQClip, debugLines) {
+    // Reacquire the QE item after addVideoEffect because some builds expose stale wrappers.
+    try {
+        var seq = app.project.activeSequence;
+        var qSeq = qe.project.getActiveSequence();
+        var refreshed = _gridMaker_findQEClip(qSeq, seq, clip);
+        if (refreshed) {
+            _gridMaker_debugPush(debugLines, "QE clip refreshed after add: " + _gridMaker_qeClipDebugLabel(refreshed));
+            return refreshed;
+        }
+    } catch (e1) {
+        _gridMaker_debugPush(debugLines, "QE clip refresh failed: " + e1);
+    }
+    return fallbackQClip;
+}
+
+function _gridMaker_refreshHostUI() {
+    try {
+        if (app && typeof app.refresh === "function") {
+            app.refresh();
+        }
+    } catch (e1) {}
+}
+
 function _gridMaker_sleepSafe(ms) {
     try {
         if (typeof $ !== "undefined" && $.sleep) {
@@ -1658,6 +1745,7 @@ function _gridMaker_ensureManagedEffect(clip, qClip, type, lookupNames, debugLin
 
     var qeTypeCountBefore = _gridMaker_qeCountTypeComponents(qClip, type);
     _gridMaker_debugPush(debugLines, type + " QE components before ensure=" + qeTypeCountBefore);
+    _gridMaker_debugPush(debugLines, type + " QE clip before ensure=" + _gridMaker_qeClipDebugLabel(qClip));
 
     for (var i = 0; i < lookupNames.length; i++) {
         var effectName = lookupNames[i];
@@ -1669,10 +1757,12 @@ function _gridMaker_ensureManagedEffect(clip, qClip, type, lookupNames, debugLin
             continue;
         }
 
-        try {
-            qClip.addVideoEffect(fx);
-        } catch (e2) {
+        var addInfo = _gridMaker_addVideoEffectToQEClip(qClip, fx, effectName, type, debugLines);
+        if (!addInfo.ok) {
             continue;
+        }
+        if (addInfo.qClip) {
+            qClip = addInfo.qClip;
         }
 
         var afterType = _gridMaker_getTypeComponents(clip, type);
@@ -1680,11 +1770,13 @@ function _gridMaker_ensureManagedEffect(clip, qClip, type, lookupNames, debugLin
         if (!candidate && afterType.length > beforeType.length) {
             candidate = afterType[afterType.length - 1];
         }
+        qClip = _gridMaker_refreshQEClipHandle(clip, qClip, debugLines);
         var qeTypeCountAfter = _gridMaker_qeCountTypeComponents(qClip, type);
         _gridMaker_debugPush(
             debugLines,
             "Added " + type + " via '" + effectName + "' candidate=" + _gridMaker_componentLabel(candidate) +
-            " qeCountBefore=" + qeTypeCountBefore + " qeCountAfter=" + qeTypeCountAfter
+            " qeCountBefore=" + qeTypeCountBefore + " qeCountAfter=" + qeTypeCountAfter +
+            " addMode=" + addInfo.mode
         );
 
         if (candidate) {
@@ -2131,6 +2223,28 @@ function _gridMaker_qeComponentLabel(component) {
         matchName = component.matchName || "";
     } catch (e2) {}
     return "[" + name + "|" + matchName + "]";
+}
+
+function _gridMaker_qeClipDebugLabel(qClip) {
+    if (!qClip) {
+        return "<none>";
+    }
+    var name = "";
+    var start = "";
+    var end = "";
+    var selected = false;
+    try {
+        name = qClip.name || "";
+    } catch (e1) {}
+    try {
+        start = String(_gridMaker_timeToSeconds(qClip.start));
+    } catch (e2) {}
+    try {
+        end = String(_gridMaker_timeToSeconds(qClip.end));
+    } catch (e3) {}
+    selected = _gridMaker_isQEItemSelected(qClip);
+    return "[name=" + name + " start=" + start + " end=" + end +
+        " selected=" + selected + " components=" + _gridMaker_qeGetComponentCount(qClip) + "]";
 }
 
 function _gridMaker_qeComponentMatchesType(component, type) {
