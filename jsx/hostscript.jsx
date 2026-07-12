@@ -3722,8 +3722,60 @@ function _gridMaker_jsonStringify(value) {
     try {
         return JSON.stringify(value);
     } catch (e1) {
-        return "{}";
+        return _gridMaker_jsonStringifyFallback(value);
     }
+}
+
+function _gridMaker_jsonStringifyFallback(value) {
+    // Keep host JSON responses working on ExtendScript engines without a JSON global.
+    if (value === null) {
+        return "null";
+    }
+    if (value === undefined) {
+        return "null";
+    }
+    var t = typeof value;
+    if (t === "boolean") {
+        return value ? "true" : "false";
+    }
+    if (t === "number") {
+        return isFinite(value) ? String(value) : "null";
+    }
+    if (t === "string") {
+        return "\"" + _gridMaker_jsonEscapeString(value) + "\"";
+    }
+    if (value instanceof Array) {
+        var arr = [];
+        for (var i = 0; i < value.length; i++) {
+            arr.push(_gridMaker_jsonStringifyFallback(value[i]));
+        }
+        return "[" + arr.join(",") + "]";
+    }
+    if (t === "object") {
+        var parts = [];
+        for (var key in value) {
+            if (!value.hasOwnProperty(key)) {
+                continue;
+            }
+            var item = value[key];
+            if (typeof item === "undefined" || typeof item === "function") {
+                continue;
+            }
+            parts.push("\"" + _gridMaker_jsonEscapeString(key) + "\":" + _gridMaker_jsonStringifyFallback(item));
+        }
+        return "{" + parts.join(",") + "}";
+    }
+    return "null";
+}
+
+function _gridMaker_jsonEscapeString(value) {
+    // Escape only JSON-sensitive characters so simple capability payloads parse reliably.
+    return String(value)
+        .replace(/\\/g, "\\\\")
+        .replace(/"/g, "\\\"")
+        .replace(/\r/g, "\\r")
+        .replace(/\n/g, "\\n")
+        .replace(/\t/g, "\\t");
 }
 
 function _gridMaker_jsonParse(text) {
