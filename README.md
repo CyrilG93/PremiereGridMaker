@@ -1,4 +1,4 @@
-# Grid Maker - v1.5.11
+# Grid Maker - v1.5.12
 
 Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 
@@ -13,7 +13,7 @@ Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 - One-click placement to a target cell using `Motion`, with `Crop` / `Rounded Crop` when available
 - Batch apply: map selected timeline clips to cells in one click (ordered by track from bottom to top)
 - Undo for recent Grid Maker actions during the current panel session
-- Reset selected clips back to a full-frame 1x1 placement while resetting `Crop` / `Rounded Crop`
+- Reset selected clips back to a full-frame 1x1 placement while resetting `Crop` / `Rounded Crop` and Grid Maker-managed `Transform`
 - No manual position presets required
 - Grid Designer mode (10x10 canvas): irregular layouts with draggable/resizable blocks
 - Designer multi-selection with `Shift + click` to move several blocks together, with clearer highlighting on all selected blocks
@@ -122,8 +122,8 @@ Batch order is deterministic:
 
 - `Undo` restores the previous Motion/Crop/Transform state captured before the last Grid Maker action.
 - You can undo several Grid Maker actions in a row while the panel stays open.
-- `Reset` applies to selected video clips: it places the clip like a full-frame 1x1 Grid Maker cell and resets Grid Maker-managed `Crop` / `Rounded Crop` values.
-- `Transform` and other effects on the clips are left unchanged.
+- `Reset` applies to selected video clips: it places the clip like a full-frame 1x1 Grid Maker cell, resets Grid Maker-managed `Crop` / `Rounded Crop` values, and restores Grid Maker-managed `Transform` to Premiere's default values.
+- Other effects on the clips are left unchanged.
 
 ### Designer import/export
 

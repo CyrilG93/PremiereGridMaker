@@ -992,7 +992,7 @@ function gridMaker_restoreClipsState(snapshotJson) {
     }
 }
 
-// Reset selected clips to full-frame Motion and reset only Grid Maker-managed Crop values.
+// Reset selected clips to full-frame Motion and default Grid Maker-managed Crop/Transform values.
 function gridMaker_resetSelectedClips() {
     var debugLines = [];
     function dbg(message) {
@@ -1189,9 +1189,10 @@ function _gridMaker_restoreClipState(seq, clip, snapshot, debugLines) {
 }
 
 function _gridMaker_resetClipState(seq, clip, debugLines) {
-    // Reset Motion and Crop only; Transform is intentionally left untouched.
+    // Reset only the placement/effects that Grid Maker manages.
     var ok = _gridMaker_resetMotionState(seq, clip, debugLines);
     ok = _gridMaker_removeOrNeutralizeManagedEffect(clip, "crop", debugLines) && ok;
+    ok = _gridMaker_resetManagedTransformDefaults(seq, clip, debugLines) && ok;
     return ok;
 }
 
@@ -1289,6 +1290,47 @@ function _gridMaker_restoreTransformState(clip, transformState, debugLines) {
     return true;
 }
 
+function _gridMaker_resetManagedTransformDefaults(seq, clip, debugLines) {
+    var transform = _gridMaker_findManagedTransformComponent(clip);
+    if (!transform) {
+        _gridMaker_debugPush(debugLines, "Reset Transform skipped: no managed Transform component");
+        return true;
+    }
+
+    var qSeq = null;
+    try {
+        qSeq = qe.project.getActiveSequence();
+    } catch (e1) {
+        qSeq = null;
+    }
+
+    var frameSize = _gridMaker_getSequenceFrameSize(seq, qSeq);
+    if (!frameSize || !(frameSize.width > 0) || !(frameSize.height > 0)) {
+        _gridMaker_debugPush(debugLines, "Reset Transform failed: invalid sequence size");
+        return false;
+    }
+
+    _gridMaker_resetTransformDefaults(transform, frameSize.width, frameSize.height, debugLines);
+    return true;
+}
+
+function _gridMaker_resetTransformDefaults(component, frameW, frameH, debugLines) {
+    // Match Premiere's default Transform effect state without using zero for centered point values.
+    var center = [frameW * 0.5, frameH * 0.5];
+    _gridMaker_trySetPointProperty(_gridMaker_findTransformAnchorPointProperty(component), center, debugLines, "reset.transform.anchorPoint");
+    _gridMaker_trySetPointProperty(_gridMaker_findTransformPositionProperty(component), center, debugLines, "reset.transform.position");
+    _gridMaker_trySetToggleOffProperty(_gridMaker_findTransformUniformScaleProperty(component), debugLines, "reset.transform.uniformScale");
+    _gridMaker_trySetNumberProperty(_gridMaker_findTransformScaleHeightProperty(component), 100, debugLines, "reset.transform.scaleHeight");
+    _gridMaker_trySetNumberProperty(_gridMaker_findTransformScaleWidthProperty(component), 100, debugLines, "reset.transform.scaleWidth");
+    _gridMaker_trySetNumberProperty(_gridMaker_findTransformSkewProperty(component), 0, debugLines, "reset.transform.skew");
+    _gridMaker_trySetNumberProperty(_gridMaker_findTransformSkewAxisProperty(component), 0, debugLines, "reset.transform.skewAxis");
+    _gridMaker_trySetNumberProperty(_gridMaker_findTransformRotationProperty(component), 0, debugLines, "reset.transform.rotation");
+    _gridMaker_trySetNumberProperty(_gridMaker_findTransformOpacityProperty(component), 100, debugLines, "reset.transform.opacity");
+    _gridMaker_trySetToggleProperty(_gridMaker_findTransformUseCompShutterProperty(component), true, debugLines, "reset.transform.useCompositionShutterAngle");
+    _gridMaker_trySetNumberProperty(_gridMaker_findTransformShutterAngleProperty(component), 0, debugLines, "reset.transform.shutterAngle");
+    _gridMaker_trySetTransformSamplingBilinear(component, debugLines);
+}
+
 function _gridMaker_removeOrNeutralizeManagedEffect(clip, type, debugLines) {
     var comp = (type === "crop") ? _gridMaker_findManagedCropComponent(clip, true) : _gridMaker_findManagedTransformComponent(clip);
     if (!comp) {
@@ -1383,7 +1425,7 @@ function _gridMaker_neutralizeTransform(component, debugLines) {
     if (!component) {
         return;
     }
-    // Grid Maker only uses Transform as a neutral marker, so do not rewrite Position on reset.
+    // Effect-removal fallback stays conservative and does not rewrite Transform Position.
     _gridMaker_trySetToggleProperty(_gridMaker_findTransformUniformScaleProperty(component), true, debugLines, "neutralize.transform.uniformScale");
     _gridMaker_trySetNumberProperty(_gridMaker_findProperty(component, ["scale", "scale height", "height", "hauteur"], "number"), 100, debugLines, "neutralize.transform.scaleHeight");
     _gridMaker_trySetNumberProperty(_gridMaker_findProperty(component, ["scale width", "width", "largeur"], "number"), 100, debugLines, "neutralize.transform.scaleWidth");
@@ -1406,6 +1448,172 @@ function _gridMaker_findTransformUniformScaleProperty(component) {
         "scala uniforme",
         "adbe geometry2-0003"
     ]);
+}
+
+function _gridMaker_findTransformAnchorPointProperty(component) {
+    return _gridMaker_findProperty(component, [
+        "anchor point",
+        "point d'ancrage",
+        "point d’ancrage",
+        "punto de ancla",
+        "punto di ancoraggio",
+        "ankerpunkt",
+        "ponto de ancoragem",
+        "adbe geometry2-0001"
+    ], "point2d");
+}
+
+function _gridMaker_findTransformPositionProperty(component) {
+    return _gridMaker_findProperty(component, [
+        "position",
+        "adbe transform position",
+        "adbe geometry2-0002"
+    ], "point2d");
+}
+
+function _gridMaker_findTransformScaleHeightProperty(component) {
+    return _gridMaker_findProperty(component, [
+        "scale height",
+        "hauteur d'echelle",
+        "hauteur d’échelle",
+        "hauteur",
+        "alto de escala",
+        "altezza scala",
+        "skalierung hoehe",
+        "skalierung höhe",
+        "adbe geometry2-0004"
+    ], "number");
+}
+
+function _gridMaker_findTransformScaleWidthProperty(component) {
+    return _gridMaker_findProperty(component, [
+        "scale width",
+        "largeur d'echelle",
+        "largeur d’échelle",
+        "largeur",
+        "ancho de escala",
+        "larghezza scala",
+        "skalierung breite",
+        "adbe geometry2-0005"
+    ], "number");
+}
+
+function _gridMaker_findTransformSkewProperty(component) {
+    return _gridMaker_findProperty(component, [
+        "skew",
+        "inclinaison",
+        "sesgar",
+        "inclinazione",
+        "neigung",
+        "adbe geometry2-0006"
+    ], "number");
+}
+
+function _gridMaker_findTransformSkewAxisProperty(component) {
+    return _gridMaker_findProperty(component, [
+        "skew axis",
+        "axe d'inclinaison",
+        "axe d’inclinaison",
+        "eje de sesgo",
+        "asse inclinazione",
+        "neigungsachse",
+        "adbe geometry2-0007"
+    ], "number");
+}
+
+function _gridMaker_findTransformRotationProperty(component) {
+    return _gridMaker_findProperty(component, [
+        "rotation",
+        "adbe transform rotation",
+        "adbe geometry2-0008"
+    ], "number");
+}
+
+function _gridMaker_findTransformOpacityProperty(component) {
+    return _gridMaker_findProperty(component, [
+        "opacity",
+        "opacite",
+        "opacité",
+        "opacidad",
+        "opacita",
+        "opacità",
+        "deckkraft",
+        "adbe geometry2-0009"
+    ], "number");
+}
+
+function _gridMaker_findTransformUseCompShutterProperty(component) {
+    return _gridMaker_findProperty(component, [
+        "use composition's shutter angle",
+        "use composition shutter angle",
+        "composition shutter",
+        "utiliser l'angle d'obturation",
+        "utiliser l’angle d’obturation",
+        "usar angulo de obturador de composicion",
+        "adbe geometry2-0010"
+    ]);
+}
+
+function _gridMaker_findTransformShutterAngleProperty(component) {
+    return _gridMaker_findProperty(component, [
+        "shutter angle",
+        "angle d'obturation",
+        "angle d’obturation",
+        "angle d'obturateur",
+        "angle d’obturateur",
+        "angulo de obturador",
+        "angolo otturatore",
+        "verschlusswinkel",
+        "adbe geometry2-0011"
+    ], "number");
+}
+
+function _gridMaker_findTransformSamplingProperty(component) {
+    return _gridMaker_findProperty(component, [
+        "sampling",
+        "echantillonnage",
+        "échantillonnage",
+        "muestreo",
+        "campionamento",
+        "abtastung",
+        "adbe geometry2-0012"
+    ]);
+}
+
+function _gridMaker_trySetTransformSamplingBilinear(component, debugLines) {
+    var sampling = _gridMaker_findTransformSamplingProperty(component);
+    if (!sampling) {
+        _gridMaker_debugPush(debugLines, "reset.transform.sampling skipped missing prop");
+        return false;
+    }
+
+    // CEP exposes popup parameters inconsistently; string write is the safest non-destructive default attempt.
+    return _gridMaker_trySetRawPropertyValue(sampling, "Bilinear", debugLines, "reset.transform.sampling");
+}
+
+function _gridMaker_trySetToggleOffProperty(prop, debugLines, label) {
+    // Some Premiere toggles read back as booleans, others as 0/1 numeric values.
+    if (!prop) {
+        _gridMaker_debugPush(debugLines, "set-toggle-off skip " + (label || "?") + " missing prop");
+        return false;
+    }
+
+    _gridMaker_disableTimeVarying(prop);
+    var values = [false, 0];
+    for (var i = 0; i < values.length; i++) {
+        try {
+            prop.setValue(values[i], true);
+            var readback = _gridMaker_readPropertyValue(prop);
+            var ok = !_gridMaker_isTruthyToggleValue(readback);
+            _gridMaker_debugPush(debugLines, "set-toggle-off attempt " + (label || "?") + " value=" + values[i] + " readback=" + readback + " ok=" + ok);
+            if (ok) {
+                return true;
+            }
+        } catch (e1) {}
+    }
+
+    _gridMaker_debugPush(debugLines, "set-toggle-off failed " + (label || "?"));
+    return false;
 }
 
 function _gridMaker_getTransformUniformScaleValue(component) {
