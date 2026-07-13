@@ -1,4 +1,4 @@
-# Grid Maker - v1.5.10
+# Grid Maker - v1.5.11
 
 Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 
@@ -25,6 +25,7 @@ Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 - Designer resize handles on all 4 corners for faster freeform editing
 - Create a Designer block from the currently selected clip visual state (Motion Position/Scale + Crop)
 - Designer presets per ratio, saved locally with gallery preview and quick load/delete
+- Designer presets can be duplicated from the active config for faster layout variants
 - Designer preset gallery supports drag & drop ordering (order is persisted and no longer reset on save)
 - Designer preset import/export in JSON (team sharing + backup)
 - Panel state persistence between sessions (reopens the same classic/designer view and UI context)
@@ -127,6 +128,7 @@ Batch order is deterministic:
 ### Designer import/export
 
 - `Import Configuration`: merge configs from a `.json` file into local Designer presets.
+- `Duplicate config`: copy the active config, append `2` to its name, then select the new copy automatically.
 - `Export Configuration`: save all local Designer presets into a shareable `.json` file.
 - Empty Designer presets are supported and can be shared/imported as blank templates.
 

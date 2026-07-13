@@ -317,7 +317,7 @@ input[type="range"] {
 }
 
 .designer-actions-config {
-  grid-template-columns: minmax(84px, 1fr) minmax(118px, 1.55fr) repeat(3, minmax(84px, 1fr));
+  grid-template-columns: minmax(78px, 0.95fr) minmax(112px, 1.45fr) repeat(4, minmax(74px, 1fr));
 }
 
 .designer-actions > * {
@@ -1090,7 +1090,7 @@ body.designer-resizing[data-designer-handle="w"] * {
 @media (max-width: 760px) and (min-width: 521px) {
   .designer-actions-config {
     /* Two-row config actions layout:
-       row 1 = New / Name / Save, row 2 = Import / Export. */
+       row 1 = New / Name / Save, row 2 = Import / Duplicate / Export. */
     grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 
@@ -1107,11 +1107,15 @@ body.designer-resizing[data-designer-handle="w"] * {
   }
 
   #designerImportBtn {
-    grid-column: 1 / 4;
+    grid-column: 1 / 3;
+  }
+
+  #designerDuplicateConfigBtn {
+    grid-column: 3 / 5;
   }
 
   #designerExportBtn {
-    grid-column: 4 / 7;
+    grid-column: 5 / 7;
   }
 }
 

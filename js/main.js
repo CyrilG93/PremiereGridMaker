@@ -5,7 +5,7 @@
   var cepBridge = window.cep || null;
   var csInterface = (typeof CSInterface !== "undefined") ? new CSInterface() : null;
   var i18n = window.PGM_I18N || { defaultLocale: "en", locales: {} };
-  var APP_VERSION = "1.5.10";
+  var APP_VERSION = "1.5.11";
   var PRODUCT_PAGE_URL = "https://www.cyrilplugin.com/grid-maker";
   var RELEASE_API_URL = "https://api.github.com/repos/CyrilG93/PremiereGridMaker/releases/latest";
   var CEP_THEME_COLOR_CHANGED_EVENT = "com.adobe.csxs.events.ThemeColorChanged";
@@ -251,6 +251,7 @@
   var designerNewBtn = document.getElementById("designerNewBtn");
   var designerSaveBtn = document.getElementById("designerSaveBtn");
   var designerImportBtn = document.getElementById("designerImportBtn");
+  var designerDuplicateConfigBtn = document.getElementById("designerDuplicateConfigBtn");
   var designerExportBtn = document.getElementById("designerExportBtn");
   var designerNameInput = document.getElementById("designerNameInput");
   var designerGalleryPanel = document.getElementById("designerGalleryPanel");
@@ -3136,6 +3137,58 @@
     });
   }
 
+  function buildDuplicateDesignerConfigName(name) {
+    // Duplicates keep the source name and append " 2" so the copy is immediately recognizable.
+    var baseName = String(name || "").trim();
+    if (!baseName) {
+      baseName = t("designer.default_name");
+    }
+    return baseName + " 2";
+  }
+
+  function duplicateActiveDesignerConfig() {
+    if (!state.designer.enabled) {
+      return;
+    }
+
+    var sourceName = (designerNameInput && designerNameInput.value)
+      ? designerNameInput.value.trim()
+      : "";
+    var duplicateName = buildDuplicateDesignerConfigName(sourceName);
+    var payload = {
+      // Empty id asks the host to create a new saved preset instead of overwriting the active one.
+      id: "",
+      name: duplicateName,
+      ratioW: state.ratioW,
+      ratioH: state.ratioH,
+      marginPx: state.marginPx,
+      roundness: state.roundness,
+      blocks: cloneDesignerBlocks(state.designer.blocks)
+    };
+
+    var script = "gridMaker_designerSaveConfig(" + quoteForEvalScript(JSON.stringify(payload)) + ")";
+    appendDebug("UI> evalScript: gridMaker_designerSaveConfig(<duplicate-payload>)");
+    setStatusKey("status.designer_duplicating", {}, "");
+
+    callHost(script, function (result) {
+      appendDebug("HOST< raw(designer-duplicate): " + (result || "<empty>"));
+      var parsed = parseJsonSafe(result);
+      if (!parsed || !parsed.ok || !parsed.id) {
+        appendDebug("UI> designer duplicate failed");
+        setStatusKey("status.designer_duplicate_failed", {}, "err");
+        return;
+      }
+
+      state.designer.activeConfigId = String(parsed.id);
+      if (designerNameInput) {
+        designerNameInput.value = duplicateName;
+      }
+      appendDebug("UI> designer config duplicated id=" + state.designer.activeConfigId + " name=" + duplicateName);
+      setStatusKey("status.designer_duplicated", { name: duplicateName }, "ok");
+      loadDesignerConfigs(state.designer.activeConfigId, true);
+    });
+  }
+
   function deleteDesignerConfig(configId, displayName) {
     if (!configId) {
       return;
@@ -3756,6 +3809,15 @@
         return;
       }
       importDesignerConfigs();
+    });
+  }
+
+  if (designerDuplicateConfigBtn) {
+    designerDuplicateConfigBtn.addEventListener("click", function () {
+      if (!state.designer.enabled) {
+        return;
+      }
+      duplicateActiveDesignerConfig();
     });
   }
 
