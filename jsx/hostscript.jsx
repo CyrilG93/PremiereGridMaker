@@ -1315,20 +1315,19 @@ function _gridMaker_resetManagedTransformDefaults(seq, clip, debugLines) {
 }
 
 function _gridMaker_resetTransformDefaults(component, frameW, frameH, debugLines) {
-    // Match Premiere's default Transform effect state without using zero for centered point values.
-    var center = [frameW * 0.5, frameH * 0.5];
+    // Transform point values are normalized in the scripting API; Premiere displays them as sequence pixels.
+    var center = [0.5, 0.5];
     _gridMaker_trySetPointProperty(_gridMaker_findTransformAnchorPointProperty(component), center, debugLines, "reset.transform.anchorPoint");
     _gridMaker_trySetPointProperty(_gridMaker_findTransformPositionProperty(component), center, debugLines, "reset.transform.position");
-    _gridMaker_trySetToggleOffProperty(_gridMaker_findTransformUniformScaleProperty(component), debugLines, "reset.transform.uniformScale");
-    _gridMaker_trySetNumberProperty(_gridMaker_findTransformScaleHeightProperty(component), 100, debugLines, "reset.transform.scaleHeight");
-    _gridMaker_trySetNumberProperty(_gridMaker_findTransformScaleWidthProperty(component), 100, debugLines, "reset.transform.scaleWidth");
+    _gridMaker_trySetToggleProperty(_gridMaker_findTransformUniformScaleProperty(component), true, debugLines, "reset.transform.uniformScale");
+    _gridMaker_trySetNumericProperty(_gridMaker_findTransformScaleHeightProperty(component), 100, debugLines, "reset.transform.scaleHeight");
+    _gridMaker_trySetNumericProperty(_gridMaker_findTransformScaleWidthProperty(component), 100, debugLines, "reset.transform.scaleWidth");
     _gridMaker_trySetNumberProperty(_gridMaker_findTransformSkewProperty(component), 0, debugLines, "reset.transform.skew");
     _gridMaker_trySetNumberProperty(_gridMaker_findTransformSkewAxisProperty(component), 0, debugLines, "reset.transform.skewAxis");
     _gridMaker_trySetNumberProperty(_gridMaker_findTransformRotationProperty(component), 0, debugLines, "reset.transform.rotation");
     _gridMaker_trySetNumberProperty(_gridMaker_findTransformOpacityProperty(component), 100, debugLines, "reset.transform.opacity");
     _gridMaker_trySetToggleProperty(_gridMaker_findTransformUseCompShutterProperty(component), true, debugLines, "reset.transform.useCompositionShutterAngle");
     _gridMaker_trySetNumberProperty(_gridMaker_findTransformShutterAngleProperty(component), 0, debugLines, "reset.transform.shutterAngle");
-    _gridMaker_trySetTransformSamplingBilinear(component, debugLines);
 }
 
 function _gridMaker_removeOrNeutralizeManagedEffect(clip, type, debugLines) {
@@ -1482,7 +1481,12 @@ function _gridMaker_findTransformScaleHeightProperty(component) {
         "skalierung hoehe",
         "skalierung höhe",
         "adbe geometry2-0004"
-    ], "number");
+    ]) || _gridMaker_findProperty(component, [
+        "scale",
+        "echelle",
+        "échelle",
+        "adbe transform scale"
+    ]);
 }
 
 function _gridMaker_findTransformScaleWidthProperty(component) {
@@ -1495,7 +1499,7 @@ function _gridMaker_findTransformScaleWidthProperty(component) {
         "larghezza scala",
         "skalierung breite",
         "adbe geometry2-0005"
-    ], "number");
+    ]);
 }
 
 function _gridMaker_findTransformSkewProperty(component) {
@@ -1589,6 +1593,38 @@ function _gridMaker_trySetTransformSamplingBilinear(component, debugLines) {
 
     // CEP exposes popup parameters inconsistently; string write is the safest non-destructive default attempt.
     return _gridMaker_trySetRawPropertyValue(sampling, "Bilinear", debugLines, "reset.transform.sampling");
+}
+
+function _gridMaker_trySetNumericProperty(prop, value, debugLines, label) {
+    // Some Transform properties return numeric strings or locale-wrapped values; accept any finite numeric readback.
+    if (!prop || !_gridMaker_isFiniteNumber(value)) {
+        _gridMaker_debugPush(debugLines, "set-numeric skip " + (label || "?") + " invalid prop/value");
+        return false;
+    }
+
+    _gridMaker_disableTimeVarying(prop);
+    try {
+        prop.setValue(value, true);
+        var readback = _gridMaker_readPropertyValue(prop);
+        var ok = _gridMaker_isNumericLikeFinite(readback);
+        _gridMaker_debugPush(debugLines, "set-numeric attempt " + (label || "?") + " value=" + value + " readback=" + readback + " ok=" + ok);
+        return ok;
+    } catch (e1) {
+        _gridMaker_debugPush(debugLines, "set-numeric failed " + (label || "?") + " error=" + e1);
+    }
+
+    return false;
+}
+
+function _gridMaker_isNumericLikeFinite(value) {
+    if (_gridMaker_isFiniteNumber(value)) {
+        return true;
+    }
+    if (typeof value === "string") {
+        var parsed = parseFloat(value.replace(",", "."));
+        return _gridMaker_isFiniteNumber(parsed);
+    }
+    return false;
 }
 
 function _gridMaker_trySetToggleOffProperty(prop, debugLines, label) {
