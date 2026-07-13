@@ -5,7 +5,7 @@
   var cepBridge = window.cep || null;
   var csInterface = (typeof CSInterface !== "undefined") ? new CSInterface() : null;
   var i18n = window.PGM_I18N || { defaultLocale: "en", locales: {} };
-  var APP_VERSION = "1.5.13";
+  var APP_VERSION = "1.5.14";
   var PRODUCT_PAGE_URL = "https://www.cyrilplugin.com/grid-maker";
   var RELEASE_API_URL = "https://api.github.com/repos/CyrilG93/PremiereGridMaker/releases/latest";
   var CEP_THEME_COLOR_CHANGED_EVENT = "com.adobe.csxs.events.ThemeColorChanged";
@@ -3370,8 +3370,8 @@
     renderPreview();
   }
 
-  // Create a designer block from normalized sequence bounds returned by the host capture endpoint.
-  function addDesignerBlockFromNormalizedBounds(leftNorm, topNorm, widthNorm, heightNorm) {
+  // Create a designer block object from normalized sequence bounds returned by the host capture endpoint.
+  function makeDesignerBlockFromNormalizedBounds(leftNorm, topNorm, widthNorm, heightNorm) {
     var rawBlock = {
       id: nextDesignerBlockId(),
       x: clampNumber(leftNorm, 0, 1, 0) * DESIGNER_GRID_SIZE,
@@ -3390,12 +3390,77 @@
       return null;
     }
 
+    return block;
+  }
+
+  function addDesignerBlockFromNormalizedBounds(leftNorm, topNorm, widthNorm, heightNorm) {
+    var block = makeDesignerBlockFromNormalizedBounds(leftNorm, topNorm, widthNorm, heightNorm);
+    if (!block) {
+      return null;
+    }
+
     state.designer.blocks.push(block);
     setDesignerSelection([block.id], block.id);
     return block;
   }
 
-  // Read the selected clip visual rectangle (Motion + Crop) and add it as a new designer block.
+  function parseDesignerCaptureBounds(details) {
+    if (!details) {
+      return [];
+    }
+
+    var parsedBounds = parseJsonSafe(details.boundsJson || "");
+    if (parsedBounds && parsedBounds.length) {
+      return parsedBounds;
+    }
+
+    // Backward-compatible fallback for older host responses with one block in flat details.
+    if (
+      details.leftNorm !== undefined &&
+      details.topNorm !== undefined &&
+      details.widthNorm !== undefined &&
+      details.heightNorm !== undefined
+    ) {
+      return [{
+        leftNorm: details.leftNorm,
+        topNorm: details.topNorm,
+        widthNorm: details.widthNorm,
+        heightNorm: details.heightNorm
+      }];
+    }
+
+    return [];
+  }
+
+  function addDesignerBlocksFromCaptureBounds(boundsList) {
+    var blocks = [];
+    for (var i = 0; i < (boundsList || []).length; i += 1) {
+      var bounds = boundsList[i] || {};
+      var block = makeDesignerBlockFromNormalizedBounds(
+        parseFloat(bounds.leftNorm),
+        parseFloat(bounds.topNorm),
+        parseFloat(bounds.widthNorm),
+        parseFloat(bounds.heightNorm)
+      );
+      if (block) {
+        blocks.push(block);
+      }
+    }
+
+    if (!blocks.length) {
+      return [];
+    }
+
+    var selectedIds = [];
+    for (var j = 0; j < blocks.length; j += 1) {
+      state.designer.blocks.push(blocks[j]);
+      selectedIds.push(blocks[j].id);
+    }
+    setDesignerSelection(selectedIds, selectedIds[0]);
+    return blocks;
+  }
+
+  // Read selected clip visual rectangles (Motion + Crop) and add them as new designer blocks.
   function captureDesignerBlockFromSelectedClip() {
     appendDebug("UI> evalScript: gridMaker_designerCaptureSelectedClipToBlock()");
     setStatusKey("status.designer_capture_reading", {}, "");
@@ -3405,36 +3470,35 @@
       var parsed = parseHostResponse(result);
       appendHostDebug(parsed.hostDebug);
 
-      if (parsed.kind !== "ok" || parsed.code !== "designer_block_captured") {
+      if (parsed.kind !== "ok" || (parsed.code !== "designer_block_captured" && parsed.code !== "designer_blocks_captured")) {
         setStatusKey(parsed.key || "status.designer_capture_failed", parsed.vars || {}, "err");
         return;
       }
 
-      var details = parsed.details || {};
-      var leftNorm = parseFloat(details.leftNorm);
-      var topNorm = parseFloat(details.topNorm);
-      var widthNorm = parseFloat(details.widthNorm);
-      var heightNorm = parseFloat(details.heightNorm);
-
-      if (isNaN(leftNorm) || isNaN(topNorm) || isNaN(widthNorm) || isNaN(heightNorm)) {
-        appendDebug("UI> designer capture parse failed (invalid normalized bounds)");
+      var boundsList = parseDesignerCaptureBounds(parsed.details || {});
+      if (!boundsList.length) {
+        appendDebug("UI> designer capture parse failed (missing normalized bounds)");
         setStatusKey("status.designer_capture_failed", {}, "err");
         return;
       }
 
-      var block = addDesignerBlockFromNormalizedBounds(leftNorm, topNorm, widthNorm, heightNorm);
-      if (!block) {
+      var blocks = addDesignerBlocksFromCaptureBounds(boundsList);
+      if (!blocks.length) {
         appendDebug("UI> designer capture rejected by block normalization/bounds");
         setStatusKey("status.designer_capture_failed", {}, "err");
         return;
       }
 
-      appendDebug(
-        "UI> designer block captured id=" + block.id +
-        " x=" + block.x + " y=" + block.y +
-        " w=" + block.w + " h=" + block.h
-      );
-      setStatusKey("status.designer_block_captured", {}, "ok");
+      for (var i = 0; i < blocks.length; i += 1) {
+        appendDebug(
+          "UI> designer block captured id=" + blocks[i].id +
+          " x=" + blocks[i].x + " y=" + blocks[i].y +
+          " w=" + blocks[i].w + " h=" + blocks[i].h
+        );
+      }
+      setStatusKey(blocks.length === 1 ? "status.designer_block_captured" : "status.designer_blocks_captured", {
+        count: blocks.length
+      }, "ok");
       renderPreview();
     });
   }

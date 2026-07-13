@@ -1,4 +1,4 @@
-# Grid Maker - v1.5.13
+# Grid Maker - v1.5.14
 
 Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 
@@ -23,7 +23,7 @@ Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 - Designer axis lock while moving blocks with `Shift + drag`
 - Designer block order lock toggle (locked by default) so numbering stays stable until you explicitly unlock it
 - Designer resize handles on all 4 corners for faster freeform editing
-- Create a Designer block from the currently selected clip visual state (Motion Position/Scale + Crop)
+- Create Designer blocks from the currently selected clip visual states (Motion Position/Scale + Crop)
 - Designer presets per ratio, saved locally with gallery preview and quick load/delete
 - Designer presets can be duplicated from the active config for faster layout variants
 - Designer preset gallery supports drag & drop ordering (order is persisted and no longer reset on save)
@@ -134,7 +134,8 @@ Batch order is deterministic:
 
 ### Designer capture from clip
 
-- In Designer mode, use `Create from clip` to create a block from the selected timeline clip visible state.
+- In Designer mode, use `Create from clip` to create one or more blocks from the selected timeline clip visible states.
+- Select several already-positioned clips before clicking `Create from clip` to create all matching Designer blocks at once.
 - MVP scope reads `Motion` (`Position`, `Scale`) and `Crop` only.
 - Rotation and other advanced effects are intentionally ignored in this capture flow.
 
@@ -245,7 +246,7 @@ Then include it in `index.html` before `js/main.js`.
 
 ### v1.2.6
 
-- Added `Create from clip` in Grid Designer to capture a block from the selected clip visible state (`Motion` position/scale + `Crop`).
+- Added `Create from clip` in Grid Designer to capture blocks from selected clip visible states (`Motion` position/scale + `Crop`).
 - Fixed Designer batch apply ordering to follow visible block numbers (`1`, `2`, `3`, ...) instead of geometric sorting.
 - Allowed empty Designer presets (blank drafts/templates), including save/import support.
 - Improved Designer actions row compactness so 5 action buttons stay on one line more often.

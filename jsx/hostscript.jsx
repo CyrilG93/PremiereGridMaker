@@ -600,8 +600,8 @@ function gridMaker_applyToSelectedCustomCell(leftNorm, topNorm, widthNorm, heigh
     }
 }
 
-// Designer capture endpoint: read current clip visible rectangle (Motion + Crop)
-// and return normalized bounds so the panel can create a designer block from it.
+// Designer capture endpoint: read selected clip visible rectangles (Motion + Crop)
+// and return normalized bounds so the panel can create designer blocks from them.
 function gridMaker_designerCaptureSelectedClipToBlock() {
     var debugLines = [];
     function dbg(message) {
@@ -639,16 +639,8 @@ function gridMaker_designerCaptureSelectedClipToBlock() {
             dbg("No selected video clip found in selection");
             return _gridMaker_result("ERR", "no_video_selected", null, debugLines);
         }
-        if (videoClips.length > 1) {
-            dbg("Multiple selected video clips; abort for deterministic capture");
-            return _gridMaker_result("ERR", "multiple_video_selected", null, debugLines);
-        }
-
-        var clip = videoClips[0];
-        dbg("Clip name=" + _gridMaker_clipName(clip) + " start=" + _gridMaker_timeToSeconds(clip.start) + " end=" + _gridMaker_timeToSeconds(clip.end));
 
         var qSeq = null;
-        var qClip = null;
         try {
             qSeq = qe.project.getActiveSequence();
         } catch (eQeSeq) {
@@ -657,132 +649,171 @@ function gridMaker_designerCaptureSelectedClipToBlock() {
         }
         if (qSeq) {
             dbg("QE sequence acquired");
-            qClip = _gridMaker_findQEClip(qSeq, seq, clip);
-            if (qClip) {
-                dbg("QE clip found");
-            } else {
-                dbg("QE clip not found (non-blocking for capture)");
-            }
         } else {
             dbg("QE sequence unavailable (non-blocking for capture)");
         }
 
-        var motionComp = _gridMaker_findMotionComponent(clip);
-        var cropComp = _gridMaker_findManagedCropComponent(clip);
-        dbg("Components capture-check motion=" + _gridMaker_componentLabel(motionComp) + " crop=" + _gridMaker_componentLabel(cropComp));
-        _gridMaker_dumpPlacementComponents(clip, debugLines, "CAPTURE");
-
-        if (!motionComp) {
-            dbg("Motion component unavailable");
-            return _gridMaker_result("ERR", "motion_effect_unavailable", null, debugLines);
+        var orderedClips = _gridMaker_sortClipsBottomToTop(seq, videoClips);
+        var bounds = [];
+        for (var ci = 0; ci < orderedClips.length; ci++) {
+            var entry = orderedClips[ci];
+            var capture = _gridMaker_captureDesignerClipBounds(seq, qSeq, entry.clip, debugLines, ci + 1);
+            if (!capture.ok) {
+                dbg("Designer capture failed clipIndex=" + (ci + 1) + " code=" + capture.code + " clip=" + _gridMaker_clipName(entry.clip));
+                return _gridMaker_result("ERR", capture.code || "designer_capture_failed", {
+                    failedClip: _gridMaker_clipName(entry.clip)
+                }, debugLines);
+            }
+            bounds.push(capture.bounds);
         }
 
-        var frameSize = _gridMaker_getSequenceFrameSize(seq, qSeq);
-        if (!frameSize || !_gridMaker_isFiniteNumber(frameSize.width) || !_gridMaker_isFiniteNumber(frameSize.height) || !(frameSize.width > 0) || !(frameSize.height > 0)) {
-            dbg("Invalid sequence frame size");
-            return _gridMaker_result("ERR", "invalid_sequence_size", null, debugLines);
-        }
-        var frameW = frameSize.width;
-        var frameH = frameSize.height;
-        dbg("Frame size " + frameW + "x" + frameH);
-
-        var nativeSize = _gridMaker_getClipNativeFrameSize(clip, qClip, debugLines);
-        var sourceW = frameW;
-        var sourceH = frameH;
-        if (nativeSize && _gridMaker_isReasonableFrameSize(nativeSize.width, nativeSize.height)) {
-            sourceW = nativeSize.width;
-            sourceH = nativeSize.height;
+        if (bounds.length < 1) {
+            dbg("Designer capture produced no bounds");
+            return _gridMaker_result("ERR", "designer_capture_failed", null, debugLines);
         }
 
-        // Capture uses the current Motion scale and current Crop values exactly as read.
-        var scale = _gridMaker_getCurrentScalePercent(motionComp);
-        if (!_gridMaker_isFiniteNumber(scale) || !(scale > 0)) {
-            scale = 100.0;
-            dbg("Scale fallback to 100 due to invalid Motion scale readback");
-        }
-
-        var currentPos = _gridMaker_getCurrentPosition(motionComp);
-        var positionMode = _gridMaker_detectPositionMode("motion", currentPos, frameW, frameH);
-        var absPos = _gridMaker_positionToAbsolute(currentPos, positionMode, frameW, frameH);
-        if (!absPos) {
-            dbg("Unable to convert Motion position to absolute frame coordinates");
-            return _gridMaker_result("ERR", "placement_apply_failed", null, debugLines);
-        }
-
-        var cropValues = _gridMaker_getCropValues(cropComp);
-        dbg("Capture readback scale=" + scale + " pos=" + _gridMaker_pointToString(currentPos) + " mode=" + positionMode + " absPos=[" + absPos[0] + "," + absPos[1] + "]");
-        dbg("Capture readback crop LRTB=" + cropValues.left.toFixed(3) + "," + cropValues.right.toFixed(3) + "," + cropValues.top.toFixed(3) + "," + cropValues.bottom.toFixed(3));
-
-        var baseDisplayW = sourceW;
-        var baseDisplayH = sourceH;
-        if (!(baseDisplayW > 0) || !(baseDisplayH > 0)) {
-            baseDisplayW = frameW;
-            baseDisplayH = frameH;
-        }
-
-        var scaledW = baseDisplayW * (scale / 100.0);
-        var scaledH = baseDisplayH * (scale / 100.0);
-        if (!(scaledW > 0) || !(scaledH > 0)) {
-            dbg("Invalid scaled size from captured Motion scale");
-            return _gridMaker_result("ERR", "invalid_grid", null, debugLines);
-        }
-
-        var visX = 1.0 - ((cropValues.left + cropValues.right) / 100.0);
-        var visY = 1.0 - ((cropValues.top + cropValues.bottom) / 100.0);
-        visX = _gridMaker_clamp(visX, 0.0, 1.0);
-        visY = _gridMaker_clamp(visY, 0.0, 1.0);
-
-        var visibleW = scaledW * visX;
-        var visibleH = scaledH * visY;
-        if (!(visibleW > 0.5) || !(visibleH > 0.5)) {
-            dbg("Visible rectangle collapsed after crop");
-            return _gridMaker_result("ERR", "invalid_grid", null, debugLines);
-        }
-
-        var leftPx = absPos[0] - (visibleW * 0.5);
-        var topPx = absPos[1] - (visibleH * 0.5);
-        var rightPx = leftPx + visibleW;
-        var bottomPx = topPx + visibleH;
-        dbg("Visible rect px before clip left=" + leftPx.toFixed(3) + " top=" + topPx.toFixed(3) + " right=" + rightPx.toFixed(3) + " bottom=" + bottomPx.toFixed(3));
-
-        // Clip to the sequence frame because Designer blocks live only inside the visible canvas.
-        if (leftPx < 0) {
-            leftPx = 0;
-        }
-        if (topPx < 0) {
-            topPx = 0;
-        }
-        if (rightPx > frameW) {
-            rightPx = frameW;
-        }
-        if (bottomPx > frameH) {
-            bottomPx = frameH;
-        }
-        var clippedW = rightPx - leftPx;
-        var clippedH = bottomPx - topPx;
-        dbg("Visible rect px after clip left=" + leftPx.toFixed(3) + " top=" + topPx.toFixed(3) + " width=" + clippedW.toFixed(3) + " height=" + clippedH.toFixed(3));
-
-        if (!(clippedW > 0.5) || !(clippedH > 0.5)) {
-            dbg("Visible rectangle is outside frame after clipping");
-            return _gridMaker_result("ERR", "designer_capture_out_of_bounds", null, debugLines);
-        }
-
-        var leftNorm = leftPx / frameW;
-        var topNorm = topPx / frameH;
-        var widthNorm = clippedW / frameW;
-        var heightNorm = clippedH / frameH;
-
-        dbg("Visible rect norm left=" + leftNorm.toFixed(6) + " top=" + topNorm.toFixed(6) + " width=" + widthNorm.toFixed(6) + " height=" + heightNorm.toFixed(6));
-        return _gridMaker_result("OK", "designer_block_captured", {
-            leftNorm: leftNorm.toFixed(6),
-            topNorm: topNorm.toFixed(6),
-            widthNorm: widthNorm.toFixed(6),
-            heightNorm: heightNorm.toFixed(6)
+        dbg("Designer capture summary captured=" + bounds.length);
+        return _gridMaker_result("OK", "designer_blocks_captured", {
+            count: bounds.length,
+            boundsJson: _gridMaker_jsonStringify(bounds)
         }, debugLines);
     } catch (e) {
         dbg("EXCEPTION " + e);
         return _gridMaker_result("ERR", "exception", { message: e }, debugLines);
     }
+}
+
+function _gridMaker_captureDesignerClipBounds(seq, qSeq, clip, debugLines, index) {
+    var prefix = "Capture #" + index + " ";
+    _gridMaker_debugPush(debugLines, prefix + "clip name=" + _gridMaker_clipName(clip) + " start=" + _gridMaker_timeToSeconds(clip.start) + " end=" + _gridMaker_timeToSeconds(clip.end));
+
+    var qClip = null;
+    if (qSeq) {
+        qClip = _gridMaker_findQEClip(qSeq, seq, clip);
+        if (qClip) {
+            _gridMaker_debugPush(debugLines, prefix + "QE clip found");
+        } else {
+            _gridMaker_debugPush(debugLines, prefix + "QE clip not found (non-blocking for capture)");
+        }
+    }
+
+    var motionComp = _gridMaker_findMotionComponent(clip);
+    var cropComp = _gridMaker_findManagedCropComponent(clip);
+    _gridMaker_debugPush(debugLines, prefix + "components motion=" + _gridMaker_componentLabel(motionComp) + " crop=" + _gridMaker_componentLabel(cropComp));
+    _gridMaker_dumpPlacementComponents(clip, debugLines, "CAPTURE #" + index);
+
+    if (!motionComp) {
+        _gridMaker_debugPush(debugLines, prefix + "Motion component unavailable");
+        return { ok: false, code: "motion_effect_unavailable" };
+    }
+
+    var frameSize = _gridMaker_getSequenceFrameSize(seq, qSeq);
+    if (!frameSize || !_gridMaker_isFiniteNumber(frameSize.width) || !_gridMaker_isFiniteNumber(frameSize.height) || !(frameSize.width > 0) || !(frameSize.height > 0)) {
+        _gridMaker_debugPush(debugLines, prefix + "invalid sequence frame size");
+        return { ok: false, code: "invalid_sequence_size" };
+    }
+    var frameW = frameSize.width;
+    var frameH = frameSize.height;
+    _gridMaker_debugPush(debugLines, prefix + "frame size " + frameW + "x" + frameH);
+
+    var nativeSize = _gridMaker_getClipNativeFrameSize(clip, qClip, debugLines);
+    var sourceW = frameW;
+    var sourceH = frameH;
+    if (nativeSize && _gridMaker_isReasonableFrameSize(nativeSize.width, nativeSize.height)) {
+        sourceW = nativeSize.width;
+        sourceH = nativeSize.height;
+    }
+
+    // Capture uses the current Motion scale and current Crop values exactly as read.
+    var scale = _gridMaker_getCurrentScalePercent(motionComp);
+    if (!_gridMaker_isFiniteNumber(scale) || !(scale > 0)) {
+        scale = 100.0;
+        _gridMaker_debugPush(debugLines, prefix + "scale fallback to 100 due to invalid Motion scale readback");
+    }
+
+    var currentPos = _gridMaker_getCurrentPosition(motionComp);
+    var positionMode = _gridMaker_detectPositionMode("motion", currentPos, frameW, frameH);
+    var absPos = _gridMaker_positionToAbsolute(currentPos, positionMode, frameW, frameH);
+    if (!absPos) {
+        _gridMaker_debugPush(debugLines, prefix + "unable to convert Motion position to absolute frame coordinates");
+        return { ok: false, code: "placement_apply_failed" };
+    }
+
+    var cropValues = _gridMaker_getCropValues(cropComp);
+    _gridMaker_debugPush(debugLines, prefix + "readback scale=" + scale + " pos=" + _gridMaker_pointToString(currentPos) + " mode=" + positionMode + " absPos=[" + absPos[0] + "," + absPos[1] + "]");
+    _gridMaker_debugPush(debugLines, prefix + "readback crop LRTB=" + cropValues.left.toFixed(3) + "," + cropValues.right.toFixed(3) + "," + cropValues.top.toFixed(3) + "," + cropValues.bottom.toFixed(3));
+
+    var baseDisplayW = sourceW;
+    var baseDisplayH = sourceH;
+    if (!(baseDisplayW > 0) || !(baseDisplayH > 0)) {
+        baseDisplayW = frameW;
+        baseDisplayH = frameH;
+    }
+
+    var scaledW = baseDisplayW * (scale / 100.0);
+    var scaledH = baseDisplayH * (scale / 100.0);
+    if (!(scaledW > 0) || !(scaledH > 0)) {
+        _gridMaker_debugPush(debugLines, prefix + "invalid scaled size from captured Motion scale");
+        return { ok: false, code: "invalid_grid" };
+    }
+
+    var visX = 1.0 - ((cropValues.left + cropValues.right) / 100.0);
+    var visY = 1.0 - ((cropValues.top + cropValues.bottom) / 100.0);
+    visX = _gridMaker_clamp(visX, 0.0, 1.0);
+    visY = _gridMaker_clamp(visY, 0.0, 1.0);
+
+    var visibleW = scaledW * visX;
+    var visibleH = scaledH * visY;
+    if (!(visibleW > 0.5) || !(visibleH > 0.5)) {
+        _gridMaker_debugPush(debugLines, prefix + "visible rectangle collapsed after crop");
+        return { ok: false, code: "invalid_grid" };
+    }
+
+    var leftPx = absPos[0] - (visibleW * 0.5);
+    var topPx = absPos[1] - (visibleH * 0.5);
+    var rightPx = leftPx + visibleW;
+    var bottomPx = topPx + visibleH;
+    _gridMaker_debugPush(debugLines, prefix + "visible rect px before clip left=" + leftPx.toFixed(3) + " top=" + topPx.toFixed(3) + " right=" + rightPx.toFixed(3) + " bottom=" + bottomPx.toFixed(3));
+
+    // Clip to the sequence frame because Designer blocks live only inside the visible canvas.
+    if (leftPx < 0) {
+        leftPx = 0;
+    }
+    if (topPx < 0) {
+        topPx = 0;
+    }
+    if (rightPx > frameW) {
+        rightPx = frameW;
+    }
+    if (bottomPx > frameH) {
+        bottomPx = frameH;
+    }
+    var clippedW = rightPx - leftPx;
+    var clippedH = bottomPx - topPx;
+    _gridMaker_debugPush(debugLines, prefix + "visible rect px after clip left=" + leftPx.toFixed(3) + " top=" + topPx.toFixed(3) + " width=" + clippedW.toFixed(3) + " height=" + clippedH.toFixed(3));
+
+    if (!(clippedW > 0.5) || !(clippedH > 0.5)) {
+        _gridMaker_debugPush(debugLines, prefix + "visible rectangle is outside frame after clipping");
+        return { ok: false, code: "designer_capture_out_of_bounds" };
+    }
+
+    var leftNorm = leftPx / frameW;
+    var topNorm = topPx / frameH;
+    var widthNorm = clippedW / frameW;
+    var heightNorm = clippedH / frameH;
+
+    _gridMaker_debugPush(debugLines, prefix + "visible rect norm left=" + leftNorm.toFixed(6) + " top=" + topNorm.toFixed(6) + " width=" + widthNorm.toFixed(6) + " height=" + heightNorm.toFixed(6));
+    return {
+        ok: true,
+        bounds: {
+            leftNorm: leftNorm.toFixed(6),
+            topNorm: topNorm.toFixed(6),
+            widthNorm: widthNorm.toFixed(6),
+            heightNorm: heightNorm.toFixed(6),
+            label: "clip_" + index,
+            clipName: _gridMaker_clipName(clip)
+        }
+    };
 }
 
 // Batch endpoint: apply a list of normalized cells to selected clips (track order: bottom -> top).
