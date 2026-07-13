@@ -1,4 +1,4 @@
-# Grid Maker - v1.5.14
+# Grid Maker - v1.5.15
 
 Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 
@@ -136,7 +136,7 @@ Batch order is deterministic:
 
 - In Designer mode, use `Create from clip` to create one or more blocks from the selected timeline clip visible states.
 - Select several already-positioned clips before clicking `Create from clip` to create all matching Designer blocks at once.
-- MVP scope reads `Motion` (`Position`, `Scale`) and `Crop` only.
+- Capture reads `Motion` (`Position`, `Scale`) and `Crop`, including asymmetric Crop values.
 - Rotation and other advanced effects are intentionally ignored in this capture flow.
 
 ### Designer editing

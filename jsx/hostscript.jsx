@@ -769,10 +769,14 @@ function _gridMaker_captureDesignerClipBounds(seq, qSeq, clip, debugLines, index
         return { ok: false, code: "invalid_grid" };
     }
 
-    var leftPx = absPos[0] - (visibleW * 0.5);
-    var topPx = absPos[1] - (visibleH * 0.5);
-    var rightPx = leftPx + visibleW;
-    var bottomPx = topPx + visibleH;
+    // Asymmetric Crop shifts the visible content inside the Motion-scaled frame.
+    var sourceLeftPx = absPos[0] - (scaledW * 0.5);
+    var sourceTopPx = absPos[1] - (scaledH * 0.5);
+    var leftPx = sourceLeftPx + (scaledW * (cropValues.left / 100.0));
+    var topPx = sourceTopPx + (scaledH * (cropValues.top / 100.0));
+    var rightPx = sourceLeftPx + scaledW - (scaledW * (cropValues.right / 100.0));
+    var bottomPx = sourceTopPx + scaledH - (scaledH * (cropValues.bottom / 100.0));
+    _gridMaker_debugPush(debugLines, prefix + "source rect px left=" + sourceLeftPx.toFixed(3) + " top=" + sourceTopPx.toFixed(3) + " width=" + scaledW.toFixed(3) + " height=" + scaledH.toFixed(3));
     _gridMaker_debugPush(debugLines, prefix + "visible rect px before clip left=" + leftPx.toFixed(3) + " top=" + topPx.toFixed(3) + " right=" + rightPx.toFixed(3) + " bottom=" + bottomPx.toFixed(3));
 
     // Clip to the sequence frame because Designer blocks live only inside the visible canvas.
