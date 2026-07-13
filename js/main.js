@@ -5,7 +5,7 @@
   var cepBridge = window.cep || null;
   var csInterface = (typeof CSInterface !== "undefined") ? new CSInterface() : null;
   var i18n = window.PGM_I18N || { defaultLocale: "en", locales: {} };
-  var APP_VERSION = "1.5.7";
+  var APP_VERSION = "1.5.8";
   var PRODUCT_PAGE_URL = "https://www.cyrilplugin.com/grid-maker";
   var RELEASE_API_URL = "https://api.github.com/repos/CyrilG93/PremiereGridMaker/releases/latest";
   var CEP_THEME_COLOR_CHANGED_EVENT = "com.adobe.csxs.events.ThemeColorChanged";
@@ -71,6 +71,7 @@
   // Retry transient QE effect visibility failures after the host script returns control.
   var APPLY_RETRY_DELAY_MS = 650;
   var APPLY_MAX_RETRIES = 2;
+  var UNDO_STACK_LIMIT = 20;
 
   function clampThemeChannel(value) {
     // Keep CEP RGB channels inside the valid CSS color range.
@@ -262,8 +263,11 @@
   var designerAlignCenterBothBtn = document.getElementById("designerAlignCenterBothBtn");
   var designerOrderLockBtn = document.getElementById("designerOrderLockBtn");
   var applyBatchBtn = document.getElementById("applyBatchBtn");
+  var undoBtn = document.getElementById("undoBtn");
+  var resetBtn = document.getElementById("resetBtn");
 
   var designerDrag = null;
+  var undoStack = [];
   // Track gallery drag state so preset cards can be reordered by drag & drop.
   var designerGalleryDragId = "";
   var designerGalleryClickSuppressUntil = 0;
@@ -1711,11 +1715,26 @@
       return;
     }
     applyRequestState.inFlight = true;
+    refreshTimelineActionButtons();
+
+    if (attempt === 0 && request.captureUndo && !request.undoCaptureDone) {
+      request.undoCaptureDone = true;
+      captureUndoSnapshot(request.undoLabel || "apply", function (snapshot) {
+        request.undoSnapshot = snapshot;
+        runApplyRequest(request, attempt);
+      });
+      return;
+    }
 
     callHost(request.script, function (result) {
       appendDebug("HOST< raw: " + (result || "<empty>"));
       var parsed = parseHostResponse(result);
       appendHostDebug(parsed.hostDebug);
+
+      if (parsed.kind === "ok" && request.undoSnapshot && !request.undoSnapshotPushed) {
+        request.undoSnapshotPushed = true;
+        pushUndoSnapshot(request.undoSnapshot);
+      }
 
       if (parsed.kind === "ok" && typeof request.onSuccess === "function") {
         request.onSuccess(parsed);
@@ -1738,6 +1757,7 @@
       }
 
       applyRequestState.inFlight = false;
+      refreshTimelineActionButtons();
       if (applyRequestState.queued) {
         var queued = applyRequestState.queued;
         applyRequestState.queued = null;
@@ -1755,6 +1775,7 @@
     if (applyRequestState.inFlight) {
       applyRequestState.queued = request;
       appendDebug("UI> apply busy queue: updated pending request");
+      refreshTimelineActionButtons();
       return;
     }
     runApplyRequest(request, 0);
@@ -1769,6 +1790,125 @@
     } catch (e1) {
       return null;
     }
+  }
+
+  function refreshTimelineActionButtons() {
+    // Disable destructive timeline actions while a host apply/reset/undo request is running.
+    var busy = !!applyRequestState.inFlight;
+    if (applyBatchBtn) {
+      applyBatchBtn.disabled = busy;
+    }
+    if (undoBtn) {
+      undoBtn.disabled = busy || undoStack.length < 1;
+    }
+    if (resetBtn) {
+      resetBtn.disabled = busy;
+    }
+  }
+
+  function captureUndoSnapshot(label, onDone) {
+    // Capture selected clip Motion/Crop/Transform state before a Grid Maker mutation.
+    callHost("gridMaker_captureSelectedClipsState()", function (result) {
+      appendDebug("HOST< raw(undo-capture): " + (result || "<empty>"));
+      var payload = parseJsonSafe(result);
+      if (!payload || !payload.ok || !payload.clips || !payload.clips.length) {
+        appendDebug("UI> undo snapshot unavailable before " + label);
+        onDone(null);
+        return;
+      }
+      payload.label = label || "action";
+      payload.capturedAt = Date.now();
+      appendDebug("UI> undo snapshot captured clips=" + payload.clips.length + " label=" + payload.label);
+      onDone(payload);
+    });
+  }
+
+  function pushUndoSnapshot(snapshot) {
+    // Keep several undo levels for repeated plugin actions during the current panel session.
+    if (!snapshot || !snapshot.clips || !snapshot.clips.length) {
+      return;
+    }
+    undoStack.push(snapshot);
+    while (undoStack.length > UNDO_STACK_LIMIT) {
+      undoStack.shift();
+    }
+    appendDebug("UI> undo stack size=" + undoStack.length);
+    refreshTimelineActionButtons();
+  }
+
+  function restoreUndoSnapshot(snapshot, onDone) {
+    // Restore a captured snapshot by asking the host to find the original timeline clips.
+    var script = "gridMaker_restoreClipsState(" + quoteForEvalScript(JSON.stringify(snapshot)) + ")";
+    appendDebug("UI> evalScript: gridMaker_restoreClipsState(<snapshot>)");
+    callHost(script, function (result) {
+      appendDebug("HOST< raw(undo-restore): " + (result || "<empty>"));
+      var parsed = parseHostResponse(result);
+      appendHostDebug(parsed.hostDebug);
+      onDone(parsed);
+    });
+  }
+
+  function undoLastGridMakerAction() {
+    if (applyRequestState.inFlight) {
+      return;
+    }
+    if (!undoStack.length) {
+      setStatusKey("status.undo_empty", {}, "err");
+      refreshTimelineActionButtons();
+      return;
+    }
+
+    var snapshot = undoStack.pop();
+    applyRequestState.inFlight = true;
+    refreshTimelineActionButtons();
+    setStatusKey("status.undo_applying", {}, "");
+
+    restoreUndoSnapshot(snapshot, function (parsed) {
+      applyRequestState.inFlight = false;
+      if (parsed.kind !== "ok") {
+        undoStack.push(snapshot);
+        setStatusKey(parsed.key || "status.undo_failed", parsed.vars || {}, "err");
+        refreshTimelineActionButtons();
+        return;
+      }
+      setStatusKey("status.undo_applied", {}, "ok");
+      refreshTimelineActionButtons();
+    });
+  }
+
+  function resetSelectedClips() {
+    if (applyRequestState.inFlight) {
+      return;
+    }
+
+    applyRequestState.inFlight = true;
+    refreshTimelineActionButtons();
+    setStatusKey("status.resetting", {}, "");
+
+    captureUndoSnapshot("reset", function (snapshot) {
+      appendDebug("UI> evalScript: gridMaker_resetSelectedClips()");
+      callHost("gridMaker_resetSelectedClips()", function (result) {
+        appendDebug("HOST< raw(reset): " + (result || "<empty>"));
+        var parsed = parseHostResponse(result);
+        appendHostDebug(parsed.hostDebug);
+        applyRequestState.inFlight = false;
+
+        if (parsed.kind === "ok") {
+          pushUndoSnapshot(snapshot);
+          setStatusKey("status.reset_applied", parsed.vars || {}, "ok");
+          refreshTimelineActionButtons();
+          return;
+        }
+
+        if (parsed.raw) {
+          setStatusRaw(parsed.raw, parsed.kind);
+          refreshTimelineActionButtons();
+          return;
+        }
+        setStatusKey(parsed.key, parsed.vars, parsed.kind);
+        refreshTimelineActionButtons();
+      });
+    });
   }
 
   // Build classic grid batch targets in row-major order (top-left to bottom-right).
@@ -1838,6 +1978,8 @@
 
     enqueueApplyRequest({
       script: script,
+      captureUndo: true,
+      undoLabel: "batch",
       onSuccess: function (parsed) {
         var applied = (parsed.details && parsed.details.applied) ? parsed.details.applied : "0";
         var total = (parsed.details && parsed.details.total) ? parsed.details.total : "0";
@@ -1921,6 +2063,8 @@
 
     enqueueApplyRequest({
       script: script,
+      captureUndo: true,
+      undoLabel: "classic cell",
       onSuccess: function (parsed) {
         if (parsed.code === "cell_applied" && parsed.details) {
           appendDebug(
@@ -1973,6 +2117,8 @@
 
     enqueueApplyRequest({
       script: script,
+      captureUndo: true,
+      undoLabel: "designer block",
       onSuccess: function (parsed) {
         if (parsed.code === "cell_applied") {
           appendDebug("UI> applied designer cell id=" + block.id + " scale=" + ((parsed.details && parsed.details.scale) || "") + "%");
@@ -3641,6 +3787,18 @@
     });
   }
 
+  if (undoBtn) {
+    undoBtn.addEventListener("click", function () {
+      undoLastGridMakerAction();
+    });
+  }
+
+  if (resetBtn) {
+    resetBtn.addEventListener("click", function () {
+      resetSelectedClips();
+    });
+  }
+
   copyDebugBtn.addEventListener("click", function () {
     var text = debugLog ? debugLog.value : "";
     if (!text) {
@@ -3739,6 +3897,7 @@
   // Reopen the last view (classic/designer) so repeated sessions keep the same working context.
   setDesignerMode(!!restoredPanelState.designerEnabled);
   setStatusKey(state.designer.enabled ? "status.designer_ready" : "status.ready", {}, "");
+  refreshTimelineActionButtons();
   persistPanelStateNow();
   appendDebug("INIT> panel ready");
   loadHostCapabilities();

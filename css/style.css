@@ -85,6 +85,8 @@ h1 {
 .header-btn,
 #copyDebugBtn,
 #applyBatchBtn,
+#undoBtn,
+#resetBtn,
 .designer-preview-tool,
 .designer-controls button,
 .designer-gallery-item {
@@ -105,6 +107,8 @@ h1 {
 .header-btn:hover,
 #copyDebugBtn:hover,
 #applyBatchBtn:hover,
+#undoBtn:hover,
+#resetBtn:hover,
 .designer-preview-tool:hover,
 .designer-controls button:hover,
 .designer-gallery-item:hover {
@@ -184,9 +188,38 @@ h1 {
   gap: 5px;
 }
 
-.controls-panel.designer-condensed > #applyBatchBtn {
+.controls-panel.designer-condensed > .timeline-actions button {
   padding-top: 5px;
   padding-bottom: 5px;
+}
+
+.timeline-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.timeline-actions button {
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.timeline-actions button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+@media (max-width: 260px) {
+  .timeline-actions {
+    gap: 4px;
+  }
+
+  .timeline-actions button {
+    padding-left: 6px;
+    padding-right: 6px;
+    font-size: 12px;
+  }
 }
 
 .controls-panel.designer-condensed .designer-controls {

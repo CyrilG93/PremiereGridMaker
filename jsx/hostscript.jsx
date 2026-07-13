@@ -909,6 +909,508 @@ function gridMaker_applyBatchToSelectedClips(cellsJson, ratioW, ratioH, marginPx
     }
 }
 
+// Capture the selected video clips before a plugin mutation so the panel can build a multi-step undo stack.
+function gridMaker_captureSelectedClipsState() {
+    var debugLines = [];
+    function dbg(message) {
+        _gridMaker_debugPush(debugLines, message);
+    }
+
+    try {
+        dbg("INPUT captureSelectedClipsState");
+        app.enableQE();
+        var seq = app.project.activeSequence;
+        if (!seq) {
+            dbg("No active sequence");
+            return _gridMaker_jsonStringify({ ok: false, code: "no_active_sequence", debug: debugLines.join("\n"), clips: [] });
+        }
+
+        var clips = _gridMaker_getSelectedVideoClips(seq, debugLines);
+        if (clips.length < 1) {
+            dbg("No selected video clips");
+            return _gridMaker_jsonStringify({ ok: false, code: "no_video_selected", debug: debugLines.join("\n"), clips: [] });
+        }
+
+        var captured = [];
+        for (var i = 0; i < clips.length; i++) {
+            captured.push(_gridMaker_captureClipState(seq, clips[i], debugLines));
+        }
+        dbg("Captured clips=" + captured.length);
+        return _gridMaker_jsonStringify({ ok: true, clips: captured, debug: debugLines.join("\n") });
+    } catch (e) {
+        dbg("EXCEPTION " + e);
+        return _gridMaker_jsonStringify({ ok: false, code: "exception", message: String(e), debug: debugLines.join("\n"), clips: [] });
+    }
+}
+
+// Restore clips captured by gridMaker_captureSelectedClipsState; used by the panel Undo button.
+function gridMaker_restoreClipsState(snapshotJson) {
+    var debugLines = [];
+    function dbg(message) {
+        _gridMaker_debugPush(debugLines, message);
+    }
+
+    try {
+        dbg("INPUT restoreClipsState");
+        app.enableQE();
+        var seq = app.project.activeSequence;
+        if (!seq) {
+            dbg("No active sequence");
+            return _gridMaker_result("ERR", "no_active_sequence", null, debugLines);
+        }
+
+        var snapshot = _gridMaker_jsonParse(String(snapshotJson || ""));
+        var clips = snapshot && snapshot.clips ? snapshot.clips : [];
+        if (!(clips instanceof Array) || clips.length < 1) {
+            dbg("Invalid undo snapshot");
+            return _gridMaker_result("ERR", "undo_empty", null, debugLines);
+        }
+
+        var restored = 0;
+        var missing = 0;
+        for (var i = 0; i < clips.length; i++) {
+            var item = clips[i];
+            var clip = _gridMaker_findClipByReference(seq, item.ref, debugLines);
+            if (!clip) {
+                missing += 1;
+                dbg("Undo target missing index=" + i);
+                continue;
+            }
+            if (_gridMaker_restoreClipState(seq, clip, item, debugLines)) {
+                restored += 1;
+            }
+        }
+
+        dbg("Undo summary restored=" + restored + " missing=" + missing + " total=" + clips.length);
+        if (restored < 1) {
+            return _gridMaker_result("ERR", "undo_failed", { restored: restored, missing: missing, total: clips.length }, debugLines);
+        }
+        return _gridMaker_result("OK", "undo_applied", { restored: restored, missing: missing, total: clips.length }, debugLines);
+    } catch (e) {
+        dbg("EXCEPTION " + e);
+        return _gridMaker_result("ERR", "exception", { message: e }, debugLines);
+    }
+}
+
+// Reset selected clips to base Motion and remove or neutralize only Grid Maker-managed Crop/Transform effects.
+function gridMaker_resetSelectedClips() {
+    var debugLines = [];
+    function dbg(message) {
+        _gridMaker_debugPush(debugLines, message);
+    }
+
+    try {
+        dbg("INPUT resetSelectedClips");
+        app.enableQE();
+        var seq = app.project.activeSequence;
+        if (!seq) {
+            dbg("No active sequence");
+            return _gridMaker_result("ERR", "no_active_sequence", null, debugLines);
+        }
+
+        var clips = _gridMaker_getSelectedVideoClips(seq, debugLines);
+        if (clips.length < 1) {
+            dbg("No selected video clips");
+            return _gridMaker_result("ERR", "no_video_selected", null, debugLines);
+        }
+
+        var reset = 0;
+        for (var i = 0; i < clips.length; i++) {
+            if (_gridMaker_resetClipState(seq, clips[i], debugLines)) {
+                reset += 1;
+            }
+        }
+
+        dbg("Reset summary reset=" + reset + " total=" + clips.length);
+        if (reset < 1) {
+            return _gridMaker_result("ERR", "reset_failed", { reset: reset, total: clips.length }, debugLines);
+        }
+        return _gridMaker_result("OK", "reset_applied", { reset: reset, total: clips.length }, debugLines);
+    } catch (e) {
+        dbg("EXCEPTION " + e);
+        return _gridMaker_result("ERR", "exception", { message: e }, debugLines);
+    }
+}
+
+function _gridMaker_getSelectedVideoClips(seq, debugLines) {
+    // Collect only selected video TrackItems; linked audio selections are ignored.
+    var out = [];
+    var selection = seq && typeof seq.getSelection === "function" ? seq.getSelection() : null;
+    if (!selection || selection.length < 1) {
+        return out;
+    }
+    for (var i = 0; i < selection.length; i++) {
+        if (selection[i] && selection[i].mediaType === "Video") {
+            out.push(selection[i]);
+            _gridMaker_debugPush(debugLines, "Selected video #" + out.length + " name=" + _gridMaker_clipName(selection[i]) + " track=" + _gridMaker_findTrackIndex(seq, selection[i]));
+        }
+    }
+    return out;
+}
+
+function _gridMaker_captureClipState(seq, clip, debugLines) {
+    // Store enough clip identity and effect values to restore this item later.
+    return {
+        ref: _gridMaker_buildClipReference(seq, clip),
+        motion: _gridMaker_captureMotionState(_gridMaker_findMotionComponent(clip)),
+        crop: _gridMaker_captureCropState(_gridMaker_findManagedCropComponent(clip, true)),
+        transform: _gridMaker_captureTransformState(_gridMaker_findManagedTransformComponent(clip))
+    };
+}
+
+function _gridMaker_buildClipReference(seq, clip) {
+    return {
+        trackIndex: _gridMaker_findTrackIndex(seq, clip),
+        start: _gridMaker_timeToSeconds(clip.start),
+        end: _gridMaker_timeToSeconds(clip.end),
+        name: _gridMaker_clipName(clip),
+        nodeId: _gridMaker_clipNodeId(clip)
+    };
+}
+
+function _gridMaker_captureMotionState(component) {
+    if (!component) {
+        return { exists: false };
+    }
+    return {
+        exists: true,
+        position: _gridMaker_clonePoint(_gridMaker_getCurrentPosition(component)),
+        scale: _gridMaker_getCurrentScalePercent(component)
+    };
+}
+
+function _gridMaker_captureCropState(component) {
+    if (!component) {
+        return { exists: false };
+    }
+    return {
+        exists: true,
+        values: _gridMaker_getCropValues(component),
+        roundness: _gridMaker_getCropRoundnessValue(component),
+        rounded: _gridMaker_isRoundedCropComponent(component),
+        label: _gridMaker_componentLabel(component)
+    };
+}
+
+function _gridMaker_captureTransformState(component) {
+    if (!component) {
+        return { exists: false };
+    }
+    return {
+        exists: true,
+        uniformScale: _gridMaker_getTransformUniformScaleValue(component),
+        label: _gridMaker_componentLabel(component)
+    };
+}
+
+function _gridMaker_findClipByReference(seq, ref, debugLines) {
+    if (!seq || !ref || !seq.videoTracks) {
+        return null;
+    }
+
+    var targetTrack = parseInt(ref.trackIndex, 10);
+    if (!isNaN(targetTrack) && targetTrack >= 0 && targetTrack < seq.videoTracks.numTracks) {
+        var inTrack = _gridMaker_findClipInTrack(seq.videoTracks[targetTrack], ref);
+        if (inTrack) {
+            return inTrack;
+        }
+    }
+
+    var best = null;
+    var bestScore = Number.MAX_VALUE;
+    for (var vt = 0; vt < seq.videoTracks.numTracks; vt++) {
+        var track = seq.videoTracks[vt];
+        if (!track || !track.clips) {
+            continue;
+        }
+        for (var ci = 0; ci < track.clips.numItems; ci++) {
+            var clip = track.clips[ci];
+            var score = _gridMaker_clipReferenceScore(clip, vt, ref);
+            if (score < bestScore) {
+                bestScore = score;
+                best = clip;
+            }
+        }
+    }
+
+    if (best && bestScore < 0.25) {
+        _gridMaker_debugPush(debugLines, "Clip reference fallback matched score=" + bestScore + " name=" + _gridMaker_clipName(best));
+        return best;
+    }
+    return null;
+}
+
+function _gridMaker_findClipInTrack(track, ref) {
+    if (!track || !track.clips) {
+        return null;
+    }
+    var best = null;
+    var bestScore = Number.MAX_VALUE;
+    for (var i = 0; i < track.clips.numItems; i++) {
+        var clip = track.clips[i];
+        var score = _gridMaker_clipReferenceScore(clip, ref.trackIndex, ref);
+        if (score < bestScore) {
+            bestScore = score;
+            best = clip;
+        }
+    }
+    return bestScore < 0.25 ? best : null;
+}
+
+function _gridMaker_clipReferenceScore(clip, trackIndex, ref) {
+    if (!clip || !ref) {
+        return Number.MAX_VALUE;
+    }
+    var score = 0;
+    var start = _gridMaker_timeToSeconds(clip.start);
+    var end = _gridMaker_timeToSeconds(clip.end);
+    score += Math.abs(start - _gridMaker_toNumber(ref.start));
+    score += Math.abs(end - _gridMaker_toNumber(ref.end));
+    if (parseInt(ref.trackIndex, 10) !== trackIndex) {
+        score += 10;
+    }
+    var nodeId = _gridMaker_clipNodeId(clip);
+    if (ref.nodeId && nodeId && ref.nodeId !== nodeId) {
+        score += 5;
+    }
+    var name = _gridMaker_clipName(clip);
+    if (ref.name && name && ref.name !== name) {
+        score += 1;
+    }
+    return score;
+}
+
+function _gridMaker_restoreClipState(seq, clip, snapshot, debugLines) {
+    // Restore Motion first, then put Crop/Transform back to their captured state.
+    var ok = _gridMaker_restoreMotionState(seq, clip, snapshot.motion, debugLines);
+    ok = _gridMaker_restoreCropState(clip, snapshot.crop, debugLines) && ok;
+    ok = _gridMaker_restoreTransformState(clip, snapshot.transform, debugLines) && ok;
+    return ok;
+}
+
+function _gridMaker_resetClipState(seq, clip, debugLines) {
+    // Reset only the placement/effects that Grid Maker manipulates.
+    var ok = _gridMaker_resetMotionState(seq, clip, debugLines);
+    ok = _gridMaker_removeOrNeutralizeManagedEffect(clip, "crop", debugLines) && ok;
+    ok = _gridMaker_removeOrNeutralizeManagedEffect(clip, "transform", debugLines) && ok;
+    return ok;
+}
+
+function _gridMaker_restoreMotionState(seq, clip, motionState, debugLines) {
+    var motion = _gridMaker_findMotionComponent(clip);
+    if (!motion) {
+        _gridMaker_debugPush(debugLines, "Restore Motion failed: missing component");
+        return false;
+    }
+    if (!motionState || !motionState.exists) {
+        return _gridMaker_resetMotionState(seq, clip, debugLines);
+    }
+    var scaleProp = _gridMaker_findProperty(motion, ["scale", "echelle", "escala", "scala", "adbe motion scale"], "number");
+    var positionProp = _gridMaker_findProperty(motion, ["position", "adbe motion position"], "point2d");
+    var scaleOk = _gridMaker_trySetNumberProperty(scaleProp, _gridMaker_toNumber(motionState.scale), debugLines, "undo.motion.scale");
+    var positionOk = _gridMaker_trySetPointProperty(positionProp, motionState.position, debugLines, "undo.motion.position");
+    return !!scaleOk && !!positionOk;
+}
+
+function _gridMaker_resetMotionState(seq, clip, debugLines) {
+    var motion = _gridMaker_findMotionComponent(clip);
+    if (!motion) {
+        _gridMaker_debugPush(debugLines, "Reset Motion failed: missing component");
+        return false;
+    }
+    var qSeq = null;
+    try {
+        qSeq = qe.project.getActiveSequence();
+    } catch (e1) {
+        qSeq = null;
+    }
+    var frameSize = _gridMaker_getSequenceFrameSize(seq, qSeq);
+    if (!frameSize || !(frameSize.width > 0) || !(frameSize.height > 0)) {
+        _gridMaker_debugPush(debugLines, "Reset Motion failed: invalid sequence size");
+        return false;
+    }
+    return _gridMaker_setPlacement(motion, 100, frameSize.width * 0.5, frameSize.height * 0.5, frameSize.width, frameSize.height, debugLines);
+}
+
+function _gridMaker_restoreCropState(clip, cropState, debugLines) {
+    var crop = _gridMaker_findManagedCropComponent(clip, cropState && cropState.rounded);
+    if (!cropState || !cropState.exists) {
+        return _gridMaker_removeOrNeutralizeManagedEffect(clip, "crop", debugLines);
+    }
+    if (!crop) {
+        _gridMaker_debugPush(debugLines, "Restore Crop skipped: original crop existed but no component is available");
+        return false;
+    }
+    var values = cropState.values || {};
+    _gridMaker_setCrop(crop, _gridMaker_toNumber(values.left), _gridMaker_toNumber(values.right), _gridMaker_toNumber(values.top), _gridMaker_toNumber(values.bottom));
+    if (_gridMaker_isFiniteNumber(_gridMaker_toNumber(cropState.roundness))) {
+        _gridMaker_setCropRoundness(crop, cropState.roundness, debugLines);
+    }
+    return true;
+}
+
+function _gridMaker_restoreTransformState(clip, transformState, debugLines) {
+    var transform = _gridMaker_findManagedTransformComponent(clip);
+    if (!transformState || !transformState.exists) {
+        return _gridMaker_removeOrNeutralizeManagedEffect(clip, "transform", debugLines);
+    }
+    if (!transform) {
+        _gridMaker_debugPush(debugLines, "Restore Transform skipped: original transform existed but no component is available");
+        return true;
+    }
+    if (transformState.uniformScale !== null && transformState.uniformScale !== undefined) {
+        var uniform = _gridMaker_findTransformUniformScaleProperty(transform);
+        _gridMaker_trySetRawPropertyValue(uniform, transformState.uniformScale, debugLines, "undo.transform.uniformScale");
+    }
+    return true;
+}
+
+function _gridMaker_removeOrNeutralizeManagedEffect(clip, type, debugLines) {
+    var comp = (type === "crop") ? _gridMaker_findManagedCropComponent(clip, true) : _gridMaker_findManagedTransformComponent(clip);
+    if (!comp) {
+        return true;
+    }
+    var qClip = null;
+    try {
+        qClip = _gridMaker_findQEClip(qe.project.getActiveSequence(), app.project.activeSequence, clip);
+    } catch (e1) {
+        qClip = null;
+    }
+    if (_gridMaker_tryRemoveComponent(clip, qClip, comp, type, debugLines)) {
+        _gridMaker_debugPush(debugLines, "Removed managed " + type + " component");
+        return true;
+    }
+    if (type === "crop") {
+        _gridMaker_setCrop(comp, 0, 0, 0, 0);
+        _gridMaker_setCropRoundness(comp, 0, debugLines);
+    } else {
+        _gridMaker_neutralizeTransform(comp, debugLines);
+    }
+    _gridMaker_debugPush(debugLines, "Neutralized managed " + type + " component because removal API was unavailable");
+    return true;
+}
+
+function _gridMaker_tryRemoveComponent(clip, qClip, component, type, debugLines) {
+    // Premiere's public ExtendScript docs do not expose effect deletion; try hidden runtime methods defensively.
+    var beforeCount = _gridMaker_getTypeComponents(clip, type).length;
+    var attempts = [
+        { target: component, method: "remove", arg: null },
+        { target: component, method: "delete", arg: null },
+        { target: component, method: "removeFromClip", arg: null }
+    ];
+
+    var qeIndex = _gridMaker_findQEComponentIndex(qClip, type);
+    if (qClip && qeIndex >= 0) {
+        attempts.push({ target: qClip, method: "removeComponent", arg: qeIndex });
+        attempts.push({ target: qClip, method: "removeVideoEffect", arg: qeIndex });
+        var qeComp = _gridMaker_qeGetComponentAt(qClip, qeIndex);
+        attempts.push({ target: qClip, method: "removeComponent", arg: qeComp });
+        attempts.push({ target: qClip, method: "removeVideoEffect", arg: qeComp });
+    }
+
+    for (var i = 0; i < attempts.length; i++) {
+        var attempt = attempts[i];
+        if (!attempt.target || typeof attempt.target[attempt.method] !== "function") {
+            continue;
+        }
+        try {
+            if (attempt.arg === null) {
+                attempt.target[attempt.method]();
+            } else {
+                attempt.target[attempt.method](attempt.arg);
+            }
+            _gridMaker_refreshHostUI();
+            _gridMaker_sleepSafe(80);
+            if (_gridMaker_getTypeComponents(clip, type).length < beforeCount || !_gridMaker_componentStillExists(clip, component)) {
+                _gridMaker_debugPush(debugLines, "Effect remove succeeded method=" + attempt.method + " type=" + type);
+                return true;
+            }
+        } catch (e1) {
+            _gridMaker_debugPush(debugLines, "Effect remove attempt failed method=" + attempt.method + " type=" + type + " error=" + e1);
+        }
+    }
+    return false;
+}
+
+function _gridMaker_findQEComponentIndex(qClip, type) {
+    var count = _gridMaker_qeGetComponentCount(qClip);
+    for (var i = count - 1; i >= 0; i--) {
+        var qeComp = _gridMaker_qeGetComponentAt(qClip, i);
+        if (_gridMaker_qeComponentMatchesType(qeComp, type)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+function _gridMaker_componentStillExists(clip, component) {
+    if (!clip || !clip.components || !component) {
+        return false;
+    }
+    for (var i = 0; i < clip.components.numItems; i++) {
+        if (clip.components[i] === component) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function _gridMaker_neutralizeTransform(component, debugLines) {
+    if (!component) {
+        return;
+    }
+    _gridMaker_trySetToggleProperty(_gridMaker_findTransformUniformScaleProperty(component), true, debugLines, "reset.transform.uniformScale");
+    _gridMaker_trySetNumberProperty(_gridMaker_findProperty(component, ["scale", "scale height", "height", "hauteur"], "number"), 100, debugLines, "reset.transform.scaleHeight");
+    _gridMaker_trySetNumberProperty(_gridMaker_findProperty(component, ["scale width", "width", "largeur"], "number"), 100, debugLines, "reset.transform.scaleWidth");
+    _gridMaker_trySetNumberProperty(_gridMaker_findProperty(component, ["rotation", "adbe transform rotation"], "number"), 0, debugLines, "reset.transform.rotation");
+    _gridMaker_trySetPointProperty(_gridMaker_findProperty(component, ["position", "adbe transform position"], "point2d"), [0, 0], debugLines, "reset.transform.position");
+}
+
+function _gridMaker_clonePoint(point) {
+    if (!_gridMaker_isPointValue(point)) {
+        return null;
+    }
+    return [_gridMaker_toNumber(point[0]), _gridMaker_toNumber(point[1])];
+}
+
+function _gridMaker_findTransformUniformScaleProperty(component) {
+    return _gridMaker_findProperty(component, [
+        "uniform scale",
+        "echelle uniforme",
+        "échelle uniforme",
+        "escala uniforme",
+        "scala uniforme",
+        "adbe geometry2-0003"
+    ]);
+}
+
+function _gridMaker_getTransformUniformScaleValue(component) {
+    var prop = _gridMaker_findTransformUniformScaleProperty(component);
+    return prop ? _gridMaker_readPropertyValue(prop) : null;
+}
+
+function _gridMaker_getCropRoundnessValue(component) {
+    var prop = _gridMaker_findCropRoundnessProperty(component);
+    var value = _gridMaker_toNumber(_gridMaker_readPropertyValue(prop));
+    return _gridMaker_isFiniteNumber(value) ? value : null;
+}
+
+function _gridMaker_trySetRawPropertyValue(prop, value, debugLines, label) {
+    // Restore captured non-numeric values such as boolean toggles without forcing a truthy readback.
+    if (!prop || value === null || value === undefined) {
+        return false;
+    }
+    _gridMaker_disableTimeVarying(prop);
+    try {
+        prop.setValue(value, true);
+        _gridMaker_debugPush(debugLines, "set-raw ok " + (label || "?") + " value=" + value + " readback=" + _gridMaker_readPropertyValue(prop));
+        return true;
+    } catch (e1) {
+        _gridMaker_debugPush(debugLines, "set-raw failed " + (label || "?") + " error=" + e1);
+    }
+    return false;
+}
+
 // Normalize UI batch cells payload to safe 0..1 rectangles.
 function _gridMaker_normalizeBatchCells(rawCells) {
     var out = [];
