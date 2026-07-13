@@ -1229,7 +1229,32 @@ function _gridMaker_resetMotionState(seq, clip, debugLines) {
         _gridMaker_debugPush(debugLines, "Reset Motion failed: invalid sequence size");
         return false;
     }
-    return _gridMaker_setPlacement(motion, 100, frameSize.width * 0.5, frameSize.height * 0.5, frameSize.width, frameSize.height, debugLines);
+
+    var qClip = null;
+    try {
+        qClip = _gridMaker_findQEClip(qSeq, seq, clip);
+    } catch (e2) {
+        qClip = null;
+    }
+
+    // Reset uses the same fill logic as a single 1x1 Grid Maker cell covering the whole frame.
+    var nativeSize = _gridMaker_getClipNativeFrameSize(clip, qClip, debugLines);
+    var sourceW = frameSize.width;
+    var sourceH = frameSize.height;
+    if (nativeSize && _gridMaker_isReasonableFrameSize(nativeSize.width, nativeSize.height)) {
+        sourceW = nativeSize.width;
+        sourceH = nativeSize.height;
+    }
+
+    var scaleForWidth = 100.0 * (frameSize.width / sourceW);
+    var scaleForHeight = 100.0 * (frameSize.height / sourceH);
+    var scale = Math.max(scaleForWidth, scaleForHeight);
+    if (!_gridMaker_isFiniteNumber(scale) || !(scale > 0)) {
+        scale = 100.0;
+    }
+
+    _gridMaker_debugPush(debugLines, "Reset full-frame target scale=" + scale + " source=" + sourceW + "x" + sourceH + " frame=" + frameSize.width + "x" + frameSize.height);
+    return _gridMaker_setPlacement(motion, scale, frameSize.width * 0.5, frameSize.height * 0.5, frameSize.width, frameSize.height, debugLines);
 }
 
 function _gridMaker_restoreCropState(clip, cropState, debugLines) {
@@ -1359,11 +1384,11 @@ function _gridMaker_neutralizeTransform(component, debugLines) {
     if (!component) {
         return;
     }
+    // Grid Maker only uses Transform as a neutral marker, so do not rewrite Position on reset.
     _gridMaker_trySetToggleProperty(_gridMaker_findTransformUniformScaleProperty(component), true, debugLines, "reset.transform.uniformScale");
     _gridMaker_trySetNumberProperty(_gridMaker_findProperty(component, ["scale", "scale height", "height", "hauteur"], "number"), 100, debugLines, "reset.transform.scaleHeight");
     _gridMaker_trySetNumberProperty(_gridMaker_findProperty(component, ["scale width", "width", "largeur"], "number"), 100, debugLines, "reset.transform.scaleWidth");
     _gridMaker_trySetNumberProperty(_gridMaker_findProperty(component, ["rotation", "adbe transform rotation"], "number"), 0, debugLines, "reset.transform.rotation");
-    _gridMaker_trySetPointProperty(_gridMaker_findProperty(component, ["position", "adbe transform position"], "point2d"), [0, 0], debugLines, "reset.transform.position");
 }
 
 function _gridMaker_clonePoint(point) {
