@@ -5,7 +5,7 @@
   var cepBridge = window.cep || null;
   var csInterface = (typeof CSInterface !== "undefined") ? new CSInterface() : null;
   var i18n = window.PGM_I18N || { defaultLocale: "en", locales: {} };
-  var APP_VERSION = "1.5.15";
+  var APP_VERSION = "1.5.16";
   var PRODUCT_PAGE_URL = "https://www.cyrilplugin.com/grid-maker";
   var RELEASE_API_URL = "https://api.github.com/repos/CyrilG93/PremiereGridMaker/releases/latest";
   var CEP_THEME_COLOR_CHANGED_EVENT = "com.adobe.csxs.events.ThemeColorChanged";
@@ -15,6 +15,7 @@
   var DESIGNER_GALLERY_MIN = 56;
   var DESIGNER_GALLERY_MAX = 140;
   var DESIGNER_GALLERY_DEFAULT = 64;
+  var DESIGNER_AUTOSAVE_DELAY_MS = 700;
   var PANEL_STATE_STORAGE_KEY = "pgm.panelState";
 
   // Central runtime state for UI controls, active ratio, locale and designer mode.
@@ -42,6 +43,7 @@
       selectedBlockIds: [],
       configs: [],
       activeConfigId: "",
+      autosave: false,
       orderLocked: true,
       nextBlockSeq: 1,
       loaded: false,
@@ -68,6 +70,10 @@
   };
   var panelStatePersistTimer = 0;
   var lastPanelStateSerialized = "";
+  var designerAutosaveTimer = 0;
+  var designerSaveInFlight = false;
+  var designerSaveQueued = false;
+  var lastDesignerSaveSignature = "";
   // Retry transient QE effect visibility failures after the host script returns control.
   var APPLY_RETRY_DELAY_MS = 650;
   var APPLY_MAX_RETRIES = 2;
@@ -437,6 +443,7 @@
     state.designer.editMode = !!saved.designerEditMode;
     state.designer.freeMode = !!saved.designerFreeMode && state.designer.editMode;
     state.designer.activeConfigId = saved.designerActiveConfigId ? String(saved.designerActiveConfigId) : "";
+    state.designer.autosave = !!saved.designerAutosave;
     state.designer.orderLocked = (typeof saved.designerOrderLocked === "boolean")
       ? !!saved.designerOrderLocked
       : state.designer.orderLocked;
@@ -475,6 +482,7 @@
       designerEditMode: !!state.designer.editMode,
       designerFreeMode: !!state.designer.freeMode,
       designerActiveConfigId: state.designer.activeConfigId ? String(state.designer.activeConfigId) : "",
+      designerAutosave: !!state.designer.autosave,
       designerOrderLocked: !!state.designer.orderLocked,
       debugOpen: !!(debugPanel && debugPanel.open),
       designerGalleryOpen: !!(designerGalleryPanel && designerGalleryPanel.open)
@@ -956,6 +964,58 @@
     }
   }
 
+  function clearDesignerAutosaveTimer() {
+    // Cancel pending autosave work when the user disables autosave or starts a fresh draft.
+    if (designerAutosaveTimer) {
+      window.clearTimeout(designerAutosaveTimer);
+      designerAutosaveTimer = 0;
+    }
+  }
+
+  function markDesignerSaveBaseline() {
+    // Remember the last saved/loaded payload so autosave can skip unchanged configs.
+    lastDesignerSaveSignature = buildDesignerConfigSaveSignature();
+  }
+
+  function scheduleDesignerAutosave(reason, delayMs) {
+    // Debounce host writes so rapid edits only save once after the user pauses.
+    if (!state.designer.autosave || !state.designer.enabled) {
+      return;
+    }
+    if (!state.designer.loaded) {
+      appendDebug("UI> designer autosave skipped until configs are loaded");
+      return;
+    }
+    clearDesignerAutosaveTimer();
+    designerAutosaveTimer = window.setTimeout(function () {
+      designerAutosaveTimer = 0;
+      appendDebug("UI> designer autosave firing reason=" + (reason || "change"));
+      saveDesignerConfig({ autosave: true });
+    }, Math.max(0, delayMs === undefined ? DESIGNER_AUTOSAVE_DELAY_MS : delayMs));
+  }
+
+  function markDesignerConfigChanged(reason) {
+    // User-facing Designer mutations flow through here for optional autosave.
+    scheduleDesignerAutosave(reason || "change", DESIGNER_AUTOSAVE_DELAY_MS);
+  }
+
+  function toggleDesignerAutosave() {
+    if (!state.designer.enabled) {
+      return;
+    }
+    state.designer.autosave = !state.designer.autosave;
+    appendDebug("UI> designer autosave " + (state.designer.autosave ? "ON" : "OFF"));
+    if (state.designer.autosave) {
+      setStatusKey("status.designer_autosave_on", {}, "ok");
+      scheduleDesignerAutosave("toggle", 0);
+    } else {
+      clearDesignerAutosaveTimer();
+      setStatusKey("status.designer_autosave_off", {}, "ok");
+    }
+    schedulePersistPanelState();
+    renderDesignerControlsState();
+  }
+
   // Only send roundness when the host confirms Rounded Crop support.
   function getEffectiveRoundness() {
     if (!state.hostCaps.supportsRoundedCrop) {
@@ -1229,11 +1289,11 @@
   // Keep selected blocks stacked on top only when order editing is explicitly unlocked.
   function designerBringSelectionToFront(blockIds) {
     if (state.designer.orderLocked) {
-      return;
+      return false;
     }
     var selectedIds = sanitizeDesignerSelectionIds(blockIds);
     if (!selectedIds.length || selectedIds.length === state.designer.blocks.length) {
-      return;
+      return false;
     }
 
     var keep = [];
@@ -1252,6 +1312,7 @@
       }
     }
     state.designer.blocks = keep.concat(moved);
+    return true;
   }
 
   function designerBringBlockToFront(blockId) {
@@ -1479,6 +1540,7 @@
     );
     setStatusKey("status.designer_aligned", {}, "ok");
     renderPreview();
+    markDesignerConfigChanged("align");
   }
 
   function toggleDesignerOrderLock() {
@@ -2162,8 +2224,9 @@
       ? state.designer.selectedBlockIds.slice()
       : [blockId];
     setDesignerSelection(dragIds, blockId);
+    var orderMutated = false;
     if (!pendingSelectionToggle) {
-      designerBringSelectionToFront(dragIds);
+      orderMutated = designerBringSelectionToFront(dragIds);
     }
 
     var startBlocks = [];
@@ -2197,6 +2260,7 @@
       startBlocks: startBlocks,
       selectionBeforeDrag: selectionBeforeDrag,
       pendingSelectionToggle: pendingSelectionToggle,
+      orderMutated: orderMutated,
       axisLock: "",
       didMutate: false
     };
@@ -2409,7 +2473,8 @@
     if (!designerDrag) {
       return;
     }
-    if (designerDrag.didMutate) {
+    var didMutate = !!(designerDrag.didMutate || designerDrag.orderMutated);
+    if (didMutate) {
       // Suppress the trailing click fired by the browser after a real drag/resize.
       designerSelectionClickSuppressUntil = Date.now() + 180;
     }
@@ -2430,6 +2495,9 @@
     document.body.removeAttribute("data-designer-handle");
     window.removeEventListener("mousemove", onDesignerDragMove);
     window.removeEventListener("mouseup", onDesignerDragEnd);
+    if (didMutate) {
+      markDesignerConfigChanged("drag-end");
+    }
   }
 
   function stopDesignerDrag() {
@@ -2666,6 +2734,14 @@
       designerFreeBtn.classList.toggle("free-off", !state.designer.freeMode);
       designerFreeBtn.disabled = !state.designer.enabled || !state.designer.editMode;
     }
+    if (designerSaveBtn) {
+      designerSaveBtn.textContent = state.designer.autosave
+        ? t("designer.autosave_on")
+        : t("designer.autosave_off");
+      designerSaveBtn.classList.toggle("autosave-on", !!state.designer.autosave);
+      designerSaveBtn.classList.toggle("autosave-off", !state.designer.autosave);
+      designerSaveBtn.disabled = !state.designer.enabled;
+    }
 
     if (designerModeBtn) {
       designerModeBtn.classList.toggle("active", !!state.designer.enabled);
@@ -2892,6 +2968,7 @@
     state.designer.enabled = next;
     if (!next) {
       state.designer.freeMode = false;
+      clearDesignerAutosaveTimer();
     }
     stopDesignerDrag();
 
@@ -2932,6 +3009,7 @@
         }
         appendDebug("UI> loaded designer config id=" + list[i].id + " name=" + (list[i].name || ""));
         setStatusKey("status.designer_config_loaded", { name: list[i].name || list[i].id }, "ok");
+        markDesignerSaveBaseline();
         renderPreview();
         return;
       }
@@ -3026,6 +3104,7 @@
       if (designerNameInput && !designerNameInput.value) {
         designerNameInput.value = t("designer.default_name");
       }
+      markDesignerSaveBaseline();
       renderPreview();
       return;
     }
@@ -3058,6 +3137,7 @@
       applyGlobalRoundness(found.roundness, false);
     }
 
+    markDesignerSaveBaseline();
     renderPreview();
   }
 
@@ -3096,7 +3176,8 @@
     });
   }
 
-  function saveDesignerConfig() {
+  function getDesignerConfigNameForSave() {
+    // Empty names are normalized before saving so autosave can create a valid preset.
     var name = (designerNameInput && designerNameInput.value) ? designerNameInput.value.trim() : "";
     if (!name) {
       name = t("designer.default_name");
@@ -3104,10 +3185,14 @@
         designerNameInput.value = name;
       }
     }
+    return name;
+  }
 
-    var payload = {
+  function buildDesignerConfigSavePayload() {
+    // Build one canonical payload for manual save and autosave.
+    return {
       id: state.designer.activeConfigId || "",
-      name: name,
+      name: getDesignerConfigNameForSave(),
       ratioW: state.ratioW,
       ratioH: state.ratioH,
       // Persist margin with each designer config so recalling a preset restores spacing.
@@ -3116,24 +3201,62 @@
       roundness: state.roundness,
       blocks: cloneDesignerBlocks(state.designer.blocks)
     };
+  }
+
+  function buildDesignerConfigSaveSignature() {
+    // Compare serialized payloads to avoid duplicate autosaves for unchanged configs.
+    return _safeStringify(buildDesignerConfigSavePayload());
+  }
+
+  function saveDesignerConfig(options) {
+    if (!state.designer.enabled) {
+      return;
+    }
+    var opts = options || {};
+    var isAutosave = !!opts.autosave;
+    var payload = buildDesignerConfigSavePayload();
+    var name = payload.name;
+    var serialized = _safeStringify(payload);
+
+    if (isAutosave && serialized && serialized === lastDesignerSaveSignature) {
+      appendDebug("UI> designer autosave skipped unchanged payload");
+      return;
+    }
+    if (designerSaveInFlight) {
+      designerSaveQueued = true;
+      appendDebug("UI> designer save queued while previous save is running");
+      return;
+    }
 
     var script = "gridMaker_designerSaveConfig(" + quoteForEvalScript(JSON.stringify(payload)) + ")";
-    appendDebug("UI> evalScript: gridMaker_designerSaveConfig(<payload>)");
-    setStatusKey("status.designer_saving", {}, "");
+    designerSaveInFlight = true;
+    appendDebug("UI> evalScript: gridMaker_designerSaveConfig(" + (isAutosave ? "<autosave-payload>" : "<payload>") + ")");
+    setStatusKey(isAutosave ? "status.designer_autosaving" : "status.designer_saving", {}, "");
 
     callHost(script, function (result) {
       appendDebug("HOST< raw(designer-save): " + (result || "<empty>"));
       var parsed = parseJsonSafe(result);
       if (!parsed || !parsed.ok || !parsed.id) {
         appendDebug("UI> designer save failed");
-        setStatusKey("status.designer_save_failed", {}, "err");
+        designerSaveInFlight = false;
+        setStatusKey(isAutosave ? "status.designer_autosave_failed" : "status.designer_save_failed", {}, "err");
+        if (designerSaveQueued) {
+          designerSaveQueued = false;
+          scheduleDesignerAutosave("queued-after-failure", DESIGNER_AUTOSAVE_DELAY_MS);
+        }
         return;
       }
 
       state.designer.activeConfigId = String(parsed.id);
+      markDesignerSaveBaseline();
       appendDebug("UI> designer config saved id=" + state.designer.activeConfigId);
-      setStatusKey("status.designer_saved", { name: name }, "ok");
+      setStatusKey(isAutosave ? "status.designer_autosaved" : "status.designer_saved", { name: name }, "ok");
+      designerSaveInFlight = false;
       loadDesignerConfigs(state.designer.activeConfigId, true);
+      if (designerSaveQueued) {
+        designerSaveQueued = false;
+        scheduleDesignerAutosave("queued-after-save", 0);
+      }
     });
   }
 
@@ -3183,6 +3306,7 @@
       if (designerNameInput) {
         designerNameInput.value = duplicateName;
       }
+      markDesignerSaveBaseline();
       appendDebug("UI> designer config duplicated id=" + state.designer.activeConfigId + " name=" + duplicateName);
       setStatusKey("status.designer_duplicated", { name: duplicateName }, "ok");
       loadDesignerConfigs(state.designer.activeConfigId, true);
@@ -3219,6 +3343,8 @@
         if (designerNameInput) {
           designerNameInput.value = t("designer.default_name");
         }
+        clearDesignerAutosaveTimer();
+        markDesignerSaveBaseline();
       }
       setStatusKey("status.designer_deleted", {}, "ok");
       loadDesignerConfigs(state.designer.activeConfigId, true);
@@ -3235,6 +3361,8 @@
     if (designerNameInput) {
       designerNameInput.value = t("designer.default_name");
     }
+    clearDesignerAutosaveTimer();
+    markDesignerSaveBaseline();
     appendDebug("UI> new designer config draft");
     setStatusKey("status.designer_new", {}, "ok");
     renderPreview();
@@ -3345,6 +3473,7 @@
     appendDebug("UI> designer block added id=" + block.id + " x=" + block.x + " y=" + block.y + " w=" + block.w + " h=" + block.h);
     setStatusKey("status.designer_block_added", {}, "ok");
     renderPreview();
+    markDesignerConfigChanged("add-block");
   }
 
   function duplicateSelectedDesignerBlock() {
@@ -3368,6 +3497,7 @@
     appendDebug("UI> designer block duplicated source=" + source.id + " id=" + block.id + " x=" + block.x + " y=" + block.y + " w=" + block.w + " h=" + block.h);
     setStatusKey("status.designer_block_duplicated", {}, "ok");
     renderPreview();
+    markDesignerConfigChanged("duplicate-block");
   }
 
   // Create a designer block object from normalized sequence bounds returned by the host capture endpoint.
@@ -3500,6 +3630,7 @@
         count: blocks.length
       }, "ok");
       renderPreview();
+      markDesignerConfigChanged("capture-blocks");
     });
   }
 
@@ -3534,6 +3665,7 @@
     appendDebug("UI> designer block removed count=" + selectedIds.length);
     setStatusKey("status.designer_block_removed", {}, "ok");
     renderPreview();
+    markDesignerConfigChanged("remove-block");
   }
 
   function toggleDesignerEditMode() {
@@ -3690,11 +3822,13 @@
     syncValue(marginRange, marginNumber, function (v) {
       applyGlobalMarginPx(v, true);
       appendDebug("UI> margin changed to " + state.marginPx + "px");
+      markDesignerConfigChanged("margin");
     });
   } else if (marginRange) {
     marginRange.addEventListener("input", function () {
       applyGlobalMarginPx(marginRange.value, true);
       appendDebug("UI> margin changed to " + state.marginPx + "px");
+      markDesignerConfigChanged("margin");
     });
   }
 
@@ -3703,11 +3837,13 @@
     syncValue(roundnessRange, roundnessNumber, function (v) {
       applyGlobalRoundness(v, true);
       appendDebug("UI> roundness changed to " + state.roundness + "%");
+      markDesignerConfigChanged("roundness");
     });
   } else if (roundnessRange) {
     roundnessRange.addEventListener("input", function () {
       applyGlobalRoundness(roundnessRange.value, true);
       appendDebug("UI> roundness changed to " + state.roundness + "%");
+      markDesignerConfigChanged("roundness");
     });
   }
 
@@ -3863,7 +3999,7 @@
       if (!state.designer.enabled) {
         return;
       }
-      saveDesignerConfig();
+      toggleDesignerAutosave();
     });
   }
 
@@ -3897,6 +4033,7 @@
   if (designerNameInput) {
     designerNameInput.addEventListener("input", function () {
       updateSummary();
+      markDesignerConfigChanged("name");
     });
   }
 

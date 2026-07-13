@@ -144,6 +144,18 @@ h1 {
   color: #d0d0d0;
 }
 
+#designerSaveBtn.autosave-on {
+  border-color: rgba(255, 183, 77, 0.95);
+  background: rgba(255, 159, 67, 0.2);
+  color: #fff1df;
+}
+
+#designerSaveBtn.autosave-off {
+  border-color: #5a5a5a;
+  background: rgba(90, 90, 90, 0.2);
+  color: #d0d0d0;
+}
+
 .designer-controls button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
