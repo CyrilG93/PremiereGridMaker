@@ -992,7 +992,7 @@ function gridMaker_restoreClipsState(snapshotJson) {
     }
 }
 
-// Reset selected clips to base Motion and remove or neutralize only Grid Maker-managed Crop/Transform effects.
+// Reset selected clips to full-frame Motion and reset only Grid Maker-managed Crop values.
 function gridMaker_resetSelectedClips() {
     var debugLines = [];
     function dbg(message) {
@@ -1189,10 +1189,9 @@ function _gridMaker_restoreClipState(seq, clip, snapshot, debugLines) {
 }
 
 function _gridMaker_resetClipState(seq, clip, debugLines) {
-    // Reset only the placement/effects that Grid Maker manipulates.
+    // Reset Motion and Crop only; Transform is intentionally left untouched.
     var ok = _gridMaker_resetMotionState(seq, clip, debugLines);
     ok = _gridMaker_removeOrNeutralizeManagedEffect(clip, "crop", debugLines) && ok;
-    ok = _gridMaker_removeOrNeutralizeManagedEffect(clip, "transform", debugLines) && ok;
     return ok;
 }
 
@@ -1385,10 +1384,10 @@ function _gridMaker_neutralizeTransform(component, debugLines) {
         return;
     }
     // Grid Maker only uses Transform as a neutral marker, so do not rewrite Position on reset.
-    _gridMaker_trySetToggleProperty(_gridMaker_findTransformUniformScaleProperty(component), true, debugLines, "reset.transform.uniformScale");
-    _gridMaker_trySetNumberProperty(_gridMaker_findProperty(component, ["scale", "scale height", "height", "hauteur"], "number"), 100, debugLines, "reset.transform.scaleHeight");
-    _gridMaker_trySetNumberProperty(_gridMaker_findProperty(component, ["scale width", "width", "largeur"], "number"), 100, debugLines, "reset.transform.scaleWidth");
-    _gridMaker_trySetNumberProperty(_gridMaker_findProperty(component, ["rotation", "adbe transform rotation"], "number"), 0, debugLines, "reset.transform.rotation");
+    _gridMaker_trySetToggleProperty(_gridMaker_findTransformUniformScaleProperty(component), true, debugLines, "neutralize.transform.uniformScale");
+    _gridMaker_trySetNumberProperty(_gridMaker_findProperty(component, ["scale", "scale height", "height", "hauteur"], "number"), 100, debugLines, "neutralize.transform.scaleHeight");
+    _gridMaker_trySetNumberProperty(_gridMaker_findProperty(component, ["scale width", "width", "largeur"], "number"), 100, debugLines, "neutralize.transform.scaleWidth");
+    _gridMaker_trySetNumberProperty(_gridMaker_findProperty(component, ["rotation", "adbe transform rotation"], "number"), 0, debugLines, "neutralize.transform.rotation");
 }
 
 function _gridMaker_clonePoint(point) {
