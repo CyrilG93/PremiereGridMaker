@@ -1,4 +1,4 @@
-# Grid Maker - v1.5.16
+# Grid Maker - v1.6.0
 
 Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 
@@ -212,6 +212,14 @@ window.PGM_I18N.registerLocale({
 Then include it in `index.html` before `js/main.js`.
 
 ## Changelog
+
+### v1.6.0 - 2026-07-16
+
+- Added Designer autosave, preset duplication, and multi-clip capture from existing timeline layouts.
+- Added multi-step Undo and a Reset action that returns selected clips to a clean full-frame placement.
+- Improved clip capture accuracy for asymmetric crop values.
+- Improved effect insertion reliability and French Premiere Pro compatibility.
+- Added automatic Premiere Pro theme support and a clickable version badge for quick access to the product page.
 
 ### v1.5.0 - 2026-06-29
 
