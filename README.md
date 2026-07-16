@@ -1,17 +1,17 @@
-# Grid Maker - v1.6.0
+# Grid Maker - v1.6.1
 
 Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 
 ## Features
 
-- Grid size with two sliders: rows x columns (1 to 10)
+- Grid size with two sliders and round `−` / `+` controls: rows x columns (1 to 10)
 - Ratio preset selector: `16:9`, `1:1`, `9:16`, `4:5`, `3:2`
 - Auto crop effect selection: `Rounded Crop` when the host can resolve it, classic `Crop` fallback otherwise
-- Roundness slider (`%`) for rounded corners in normal + designer workflows (auto-hidden on non-compatible hosts)
-- Global margin slider (px) applied to outer margins and spacing between cells/blocks
+- Roundness slider with `−` / `+` controls (`%`) for rounded corners in normal + designer workflows (auto-hidden on non-compatible hosts)
+- Global margin slider with `−` / `+` controls (px) applied to outer margins and spacing between cells/blocks
 - Clickable live grid preview
 - One-click placement to a target cell using `Motion`, with `Crop` / `Rounded Crop` when available
-- Batch apply: map selected timeline clips to cells in one click (ordered by track from bottom to top)
+- Batch apply: map selected timeline clips to cells in one click, with a persistent `Reverse` toggle for top-to-bottom track order
 - Undo for recent Grid Maker actions during the current panel session
 - Reset selected clips back to a full-frame 1x1 placement while resetting `Crop` / `Rounded Crop` and Grid Maker-managed `Transform`
 - No manual position presets required
@@ -111,11 +111,13 @@ On Premiere `25.5+`, it prefers `Rounded Crop` when QE can resolve it so corner 
 
 1. Select multiple video clips in the timeline.
 2. Keep the desired grid/designer layout active.
-3. Click `Apply batch`.
+3. Optional: enable `Reverse` to start with the highest selected video track.
+4. Click `Apply batch`.
 
 Batch order is deterministic:
 
 - clips are sorted by track from bottom to top (`V1`, then `V2`, etc.),
+- with `Reverse` enabled, track order runs from the highest selected track down to the lowest,
 - then by timeline start time inside each track.
 - in `Grid Designer` mode, target cells are applied in the visible block number order (`1`, `2`, `3`, ...).
 

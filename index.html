@@ -11,7 +11,7 @@
     <header class="app-header">
       <div class="title-wrap">
         <h1 data-i18n="app.title">Grid Maker</h1>
-        <span id="appVersion" class="app-version" role="button" tabindex="0" title="Open Grid Maker page" aria-label="Open Grid Maker page">V1.6.0</span>
+        <span id="appVersion" class="app-version" role="button" tabindex="0" title="Open Grid Maker page" aria-label="Open Grid Maker page">V1.6.1</span>
       </div>
       <button id="designerModeBtn" class="header-btn" type="button" data-i18n="designer.mode_off">Grid Designer</button>
       <div class="lang-picker">
@@ -28,13 +28,17 @@
         <label for="rows" data-i18n="label.rows">Rows (height)</label>
         <div class="input-row">
           <input id="rows" type="range" min="1" max="10" value="2" />
+          <button class="stepper-button" type="button" data-stepper-target="rowsNumber" data-stepper-direction="-1" aria-label="Decrease rows">−</button>
           <input id="rowsNumber" type="number" min="1" max="10" value="2" />
+          <button class="stepper-button" type="button" data-stepper-target="rowsNumber" data-stepper-direction="1" aria-label="Increase rows">+</button>
         </div>
 
         <label for="cols" data-i18n="label.cols">Columns (width)</label>
         <div class="input-row">
           <input id="cols" type="range" min="1" max="10" value="2" />
+          <button class="stepper-button" type="button" data-stepper-target="colsNumber" data-stepper-direction="-1" aria-label="Decrease columns">−</button>
           <input id="colsNumber" type="number" min="1" max="10" value="2" />
+          <button class="stepper-button" type="button" data-stepper-target="colsNumber" data-stepper-direction="1" aria-label="Increase columns">+</button>
         </div>
       </div>
 
@@ -50,19 +54,24 @@
       <label for="marginRange" data-i18n="label.margin">Global margin (px)</label>
       <div class="input-row">
         <input id="marginRange" type="range" min="0" max="200" step="1" value="0" />
+        <button class="stepper-button" type="button" data-stepper-target="marginNumber" data-stepper-direction="-1" aria-label="Decrease margin">−</button>
         <input id="marginNumber" type="number" min="0" max="200" step="1" value="0" />
+        <button class="stepper-button" type="button" data-stepper-target="marginNumber" data-stepper-direction="1" aria-label="Increase margin">+</button>
       </div>
 
       <div id="roundnessControl" hidden>
         <label for="roundnessRange" data-i18n="label.roundness">Roundness (%)</label>
         <div class="input-row">
           <input id="roundnessRange" type="range" min="0" max="100" step="1" value="0" />
+          <button class="stepper-button" type="button" data-stepper-target="roundnessNumber" data-stepper-direction="-1" aria-label="Decrease roundness">−</button>
           <input id="roundnessNumber" type="number" min="0" max="100" step="1" value="0" />
+          <button class="stepper-button" type="button" data-stepper-target="roundnessNumber" data-stepper-direction="1" aria-label="Increase roundness">+</button>
         </div>
       </div>
 
       <div class="timeline-actions">
         <button id="applyBatchBtn" type="button" data-i18n="action.applyBatch">Apply batch</button>
+        <button id="reverseBatchBtn" type="button" aria-pressed="false" data-i18n="action.reverse">Reverse</button>
         <button id="undoBtn" type="button" data-i18n="action.undo">Undo</button>
         <button id="resetBtn" type="button" data-i18n="action.reset">Reset</button>
       </div>

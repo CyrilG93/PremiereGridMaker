@@ -85,8 +85,10 @@ h1 {
 .header-btn,
 #copyDebugBtn,
 #applyBatchBtn,
+#reverseBatchBtn,
 #undoBtn,
 #resetBtn,
+.stepper-button,
 .designer-preview-tool,
 .designer-controls button,
 .designer-gallery-item {
@@ -107,8 +109,10 @@ h1 {
 .header-btn:hover,
 #copyDebugBtn:hover,
 #applyBatchBtn:hover,
+#reverseBatchBtn:hover,
 #undoBtn:hover,
 #resetBtn:hover,
+.stepper-button:hover,
 .designer-preview-tool:hover,
 .designer-controls button:hover,
 .designer-gallery-item:hover {
@@ -118,6 +122,12 @@ h1 {
 .header-btn.active {
   border-color: var(--ok);
   box-shadow: inset 0 0 0 1px var(--ok);
+}
+
+#reverseBatchBtn.active {
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.18);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 #designerEditBtn.edit-on {
@@ -207,7 +217,7 @@ h1 {
 
 .timeline-actions {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   gap: 6px;
   align-items: stretch;
 }
@@ -276,8 +286,9 @@ label {
 
 .input-row {
   display: grid;
-  grid-template-columns: 1fr 52px;
+  grid-template-columns: minmax(0, 1fr) 28px 52px 28px;
   gap: 6px;
+  align-items: center;
   margin-bottom: 8px;
 }
 
@@ -290,6 +301,35 @@ input[type="text"] {
   background: var(--panel-soft);
   color: var(--text);
   padding: 6px;
+}
+
+input[type="number"] {
+  text-align: center;
+  -moz-appearance: textfield;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+.stepper-button {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 18px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stepper-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 input[type="range"] {
@@ -1137,9 +1177,24 @@ body.designer-resizing[data-designer-handle="w"] * {
     font-size: 12px;
   }
 
+  .timeline-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .timeline-actions button {
+    width: 100%;
+  }
+
   .input-row {
-    grid-template-columns: 1fr 46px;
+    grid-template-columns: minmax(0, 1fr) 24px 46px 24px;
     gap: 5px;
+  }
+
+  .stepper-button {
+    width: 24px;
+    height: 24px;
+    min-width: 24px;
+    font-size: 16px;
   }
 
   .grid-header {

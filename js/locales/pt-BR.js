@@ -17,6 +17,7 @@
       "label.debug": "Debug",
       "action.copyDebug": "Copiar",
       "action.applyBatch": "Aplicar em lote",
+      "action.reverse": "Inverter",
       "help.cellClick": "Clique em uma celula: o clipe de video selecionado na timeline sera posicionado automaticamente.",
       "help.designer": "Modo designer: clique em um bloco para posicionar o clipe selecionado. Ative Editar para mover ou redimensionar blocos.",
       "summary.format": "{rows} x {cols} | proporcao {ratio}",

@@ -17,6 +17,7 @@
       "label.debug": "Debug",
       "action.copyDebug": "Kopieren",
       "action.applyBatch": "Stapel anwenden",
+      "action.reverse": "Umkehren",
       "help.cellClick": "Klicke auf eine Zelle: Der ausgewahlte Timeline-Videoclip wird automatisch platziert.",
       "help.designer": "Designer-Modus: Klicke auf einen Block, um den ausgewahlten Clip zu platzieren. Aktiviere Bearbeiten, um Blocke zu verschieben oder zu vergrosern.",
       "summary.format": "{rows} x {cols} | Verhaltnis {ratio}",

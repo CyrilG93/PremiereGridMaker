@@ -5,7 +5,7 @@
   var cepBridge = window.cep || null;
   var csInterface = (typeof CSInterface !== "undefined") ? new CSInterface() : null;
   var i18n = window.PGM_I18N || { defaultLocale: "en", locales: {} };
-  var APP_VERSION = "1.6.0";
+  var APP_VERSION = "1.6.1";
   var PRODUCT_PAGE_URL = "https://www.cyrilplugin.com/grid-maker";
   var RELEASE_API_URL = "https://api.github.com/repos/CyrilG93/PremiereGridMaker/releases/latest";
   var CEP_THEME_COLOR_CHANGED_EVENT = "com.adobe.csxs.events.ThemeColorChanged";
@@ -26,6 +26,7 @@
     ratioH: 9,
     marginPx: resolveInitialMarginPx(),
     roundness: resolveInitialRoundness(),
+    reverseBatchOrder: false,
     selectedCell: { row: 0, col: 0 },
     locale: resolveInitialLocale(),
     hostCaps: {
@@ -270,6 +271,7 @@
   var designerAlignCenterBothBtn = document.getElementById("designerAlignCenterBothBtn");
   var designerOrderLockBtn = document.getElementById("designerOrderLockBtn");
   var applyBatchBtn = document.getElementById("applyBatchBtn");
+  var reverseBatchBtn = document.getElementById("reverseBatchBtn");
   var undoBtn = document.getElementById("undoBtn");
   var resetBtn = document.getElementById("resetBtn");
 
@@ -447,6 +449,7 @@
     state.designer.orderLocked = (typeof saved.designerOrderLocked === "boolean")
       ? !!saved.designerOrderLocked
       : state.designer.orderLocked;
+    state.reverseBatchOrder = !!saved.reverseBatchOrder;
     restored.designerEnabled = !!saved.designerEnabled;
 
     if (rowsRange) {
@@ -484,6 +487,7 @@
       designerActiveConfigId: state.designer.activeConfigId ? String(state.designer.activeConfigId) : "",
       designerAutosave: !!state.designer.autosave,
       designerOrderLocked: !!state.designer.orderLocked,
+      reverseBatchOrder: !!state.reverseBatchOrder,
       debugOpen: !!(debugPanel && debugPanel.open),
       designerGalleryOpen: !!(designerGalleryPanel && designerGalleryPanel.open)
     };
@@ -931,6 +935,7 @@
     if (marginNumber) {
       marginNumber.value = String(marginPx);
     }
+    refreshStepperButtons();
 
     if (!persist) {
       return;
@@ -953,6 +958,7 @@
     if (roundnessNumber) {
       roundnessNumber.value = String(roundness);
     }
+    refreshStepperButtons();
 
     if (!persist) {
       return;
@@ -1030,6 +1036,7 @@
       inputA.value = String(v);
       inputB.value = String(v);
       callback(v);
+      refreshStepperButtons();
     });
 
     inputB.addEventListener("input", function () {
@@ -1037,7 +1044,56 @@
       inputA.value = String(v);
       inputB.value = String(v);
       callback(v);
+      refreshStepperButtons();
     });
+  }
+
+  function refreshStepperButtons() {
+    // Disable only the step button that would move an input beyond its declared limit.
+    var buttons = document.querySelectorAll(".stepper-button[data-stepper-target]");
+    for (var i = 0; i < buttons.length; i += 1) {
+      var button = buttons[i];
+      var input = document.getElementById(button.getAttribute("data-stepper-target"));
+      if (!input) {
+        button.disabled = true;
+        continue;
+      }
+      var direction = parseInt(button.getAttribute("data-stepper-direction"), 10) < 0 ? -1 : 1;
+      var value = parseFloat(input.value);
+      var min = parseFloat(input.min);
+      var max = parseFloat(input.max);
+      button.disabled = direction < 0 ? value <= min : value >= max;
+    }
+  }
+
+  function dispatchInputEvent(input) {
+    // Use the legacy event constructor supported by CEP Chromium to reuse existing input synchronization.
+    var event = document.createEvent("HTMLEvents");
+    event.initEvent("input", true, false);
+    input.dispatchEvent(event);
+  }
+
+  function bindStepperButtons() {
+    // Connect every round minus/plus button to its numeric field without duplicating control logic.
+    var buttons = document.querySelectorAll(".stepper-button[data-stepper-target]");
+    for (var i = 0; i < buttons.length; i += 1) {
+      buttons[i].addEventListener("click", function () {
+        var input = document.getElementById(this.getAttribute("data-stepper-target"));
+        if (!input) {
+          return;
+        }
+        var direction = parseInt(this.getAttribute("data-stepper-direction"), 10) < 0 ? -1 : 1;
+        var step = parseFloat(input.step);
+        var min = parseFloat(input.min);
+        var max = parseFloat(input.max);
+        var current = parseFloat(input.value);
+        step = step > 0 ? step : 1;
+        current = isNaN(current) ? min : current;
+        input.value = String(clampStep(current + (direction * step), min, max, step, current));
+        dispatchInputEvent(input);
+      });
+    }
+    refreshStepperButtons();
   }
 
   function getRatioText() {
@@ -1861,6 +1917,9 @@
     if (applyBatchBtn) {
       applyBatchBtn.disabled = busy;
     }
+    if (reverseBatchBtn) {
+      reverseBatchBtn.disabled = busy;
+    }
     if (undoBtn) {
       undoBtn.disabled = busy || undoStack.length < 1;
     }
@@ -2018,7 +2077,24 @@
     return buildClassicBatchCells();
   }
 
-  // Batch apply maps selected clips to cells, ordered by track (bottom->top) in hostscript.
+  function renderReverseBatchState() {
+    // Keep the toggle state visually explicit and available to assistive technologies.
+    if (!reverseBatchBtn) {
+      return;
+    }
+    reverseBatchBtn.classList.toggle("active", !!state.reverseBatchOrder);
+    reverseBatchBtn.setAttribute("aria-pressed", state.reverseBatchOrder ? "true" : "false");
+  }
+
+  function toggleReverseBatchOrder() {
+    // Reverse changes only the selected clip track direction; cell numbering stays unchanged.
+    state.reverseBatchOrder = !state.reverseBatchOrder;
+    appendDebug("UI> reverse batch order " + (state.reverseBatchOrder ? "ON (top-to-bottom)" : "OFF (bottom-to-top)"));
+    renderReverseBatchState();
+    schedulePersistPanelState();
+  }
+
+  // Batch apply maps selected clips to cells using the selected track direction in hostscript.
   function applyBatchSelection() {
     var cells = buildBatchCells();
     if (!cells.length) {
@@ -2032,11 +2108,12 @@
       state.ratioW + "," +
       state.ratioH + "," +
       state.marginPx + "," +
-      effectiveRoundness +
+      effectiveRoundness + "," +
+      (state.reverseBatchOrder ? 1 : 0) +
       ")";
 
-    appendDebug("UI> batch click cells=" + cells.length + " ratio=" + getRatioText() + " marginPx=" + state.marginPx + " roundness=" + effectiveRoundness);
-    appendDebug("UI> evalScript: gridMaker_applyBatchToSelectedClips(<cells>," + state.ratioW + "," + state.ratioH + "," + state.marginPx + "," + effectiveRoundness + ")");
+    appendDebug("UI> batch click cells=" + cells.length + " ratio=" + getRatioText() + " marginPx=" + state.marginPx + " roundness=" + effectiveRoundness + " reverse=" + state.reverseBatchOrder);
+    appendDebug("UI> evalScript: gridMaker_applyBatchToSelectedClips(<cells>," + state.ratioW + "," + state.ratioH + "," + state.marginPx + "," + effectiveRoundness + "," + (state.reverseBatchOrder ? 1 : 0) + ")");
     setStatusKey("status.batch_applying", {}, "");
 
     enqueueApplyRequest({
@@ -3847,6 +3924,8 @@
     });
   }
 
+  bindStepperButtons();
+
   window.addEventListener("resize", function () {
     schedulePreviewFit();
   });
@@ -4050,6 +4129,12 @@
     });
   }
 
+  if (reverseBatchBtn) {
+    reverseBatchBtn.addEventListener("click", function () {
+      toggleReverseBatchOrder();
+    });
+  }
+
   if (undoBtn) {
     undoBtn.addEventListener("click", function () {
       undoLastGridMakerAction();
@@ -4135,9 +4220,11 @@
   applyPremierePanelTheme();
   bindPremiereThemeListener();
   var restoredPanelState = restorePanelStateFromStorage();
+  renderReverseBatchState();
   applyDesignerGallerySize(state.designer.gallerySize, false);
   applyGlobalMarginPx(state.marginPx, false);
   applyGlobalRoundness(state.roundness, false);
+  refreshStepperButtons();
   renderRoundnessControl();
   if (classicGridControls) {
     classicGridControls.style.display = "";

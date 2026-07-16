@@ -17,6 +17,7 @@
       "label.debug": "Debug",
       "action.copyDebug": "Copy",
       "action.applyBatch": "Apply batch",
+      "action.reverse": "Reverse",
       "action.undo": "Undo",
       "action.reset": "Reset",
       "help.cellClick": "Click a cell below: the selected timeline video clip will be placed automatically.",

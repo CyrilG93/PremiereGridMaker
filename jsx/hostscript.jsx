@@ -653,7 +653,7 @@ function gridMaker_designerCaptureSelectedClipToBlock() {
             dbg("QE sequence unavailable (non-blocking for capture)");
         }
 
-        var orderedClips = _gridMaker_sortClipsBottomToTop(seq, videoClips);
+        var orderedClips = _gridMaker_sortClipsByTrackOrder(seq, videoClips, false);
         var bounds = [];
         for (var ci = 0; ci < orderedClips.length; ci++) {
             var entry = orderedClips[ci];
@@ -820,15 +820,16 @@ function _gridMaker_captureDesignerClipBounds(seq, qSeq, clip, debugLines, index
     };
 }
 
-// Batch endpoint: apply a list of normalized cells to selected clips (track order: bottom -> top).
-function gridMaker_applyBatchToSelectedClips(cellsJson, ratioW, ratioH, marginPx, roundnessPct) {
+// Batch endpoint: apply normalized cells using bottom-to-top or top-to-bottom track order.
+function gridMaker_applyBatchToSelectedClips(cellsJson, ratioW, ratioH, marginPx, roundnessPct, reverseTrackOrder) {
     var debugLines = [];
     function dbg(message) {
         _gridMaker_debugPush(debugLines, message);
     }
 
     try {
-        dbg("INPUT batch ratio=" + ratioW + ":" + ratioH + " marginPx=" + marginPx + " roundnessPct=" + roundnessPct);
+        reverseTrackOrder = parseInt(reverseTrackOrder, 10) === 1;
+        dbg("INPUT batch ratio=" + ratioW + ":" + ratioH + " marginPx=" + marginPx + " roundnessPct=" + roundnessPct + " reverseTrackOrder=" + reverseTrackOrder);
         app.enableQE();
         dbg("QE enabled");
 
@@ -874,7 +875,7 @@ function gridMaker_applyBatchToSelectedClips(cellsJson, ratioW, ratioH, marginPx
             return _gridMaker_result("ERR", "no_video_selected", null, debugLines);
         }
 
-        var orderedClips = _gridMaker_sortClipsBottomToTop(seq, selectedVideoClips);
+        var orderedClips = _gridMaker_sortClipsByTrackOrder(seq, selectedVideoClips, reverseTrackOrder);
         dbg("Batch selected video clips=" + orderedClips.length);
         for (var ci = 0; ci < orderedClips.length; ci++) {
             var oc = orderedClips[ci];
@@ -1752,8 +1753,8 @@ function _gridMaker_normalizeBatchCells(rawCells) {
     return out;
 }
 
-// Sort clips by V track index ascending (V1, V2, V3...) and by timeline start.
-function _gridMaker_sortClipsBottomToTop(seq, clips) {
+// Sort clips by track direction while keeping timeline start order stable inside each track.
+function _gridMaker_sortClipsByTrackOrder(seq, clips, topToBottom) {
     var entries = [];
     for (var i = 0; i < clips.length; i++) {
         var clip = clips[i];
@@ -1767,10 +1768,16 @@ function _gridMaker_sortClipsBottomToTop(seq, clips) {
     }
 
     entries.sort(function (a, b) {
-        var at = (a.trackIndex >= 0) ? a.trackIndex : 99999;
-        var bt = (b.trackIndex >= 0) ? b.trackIndex : 99999;
+        var at = a.trackIndex;
+        var bt = b.trackIndex;
+        if (at < 0 && bt >= 0) {
+            return 1;
+        }
+        if (bt < 0 && at >= 0) {
+            return -1;
+        }
         if (at !== bt) {
-            return at - bt;
+            return topToBottom ? bt - at : at - bt;
         }
         if (a.start !== b.start) {
             return a.start - b.start;
