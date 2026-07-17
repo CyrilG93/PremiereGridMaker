@@ -18,6 +18,7 @@
       "action.copyDebug": "コピー",
       "action.applyBatch": "一括適用",
       "action.reverse": "逆順",
+      "action.redo": "やり直す",
       "help.cellClick": "セルをクリックすると、タイムラインで選択したビデオクリップが自動配置されます。",
       "help.designer": "デザイナーモード: ブロックをクリックして選択クリップを配置。編集をONにすると移動/リサイズできます。",
       "summary.format": "{rows} x {cols} | 比率 {ratio}",

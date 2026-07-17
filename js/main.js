@@ -5,7 +5,7 @@
   var cepBridge = window.cep || null;
   var csInterface = (typeof CSInterface !== "undefined") ? new CSInterface() : null;
   var i18n = window.PGM_I18N || { defaultLocale: "en", locales: {} };
-  var APP_VERSION = "1.6.1";
+  var APP_VERSION = "1.6.2";
   var PRODUCT_PAGE_URL = "https://www.cyrilplugin.com/grid-maker";
   var RELEASE_API_URL = "https://api.github.com/repos/CyrilG93/PremiereGridMaker/releases/latest";
   var CEP_THEME_COLOR_CHANGED_EVENT = "com.adobe.csxs.events.ThemeColorChanged";
@@ -273,10 +273,12 @@
   var applyBatchBtn = document.getElementById("applyBatchBtn");
   var reverseBatchBtn = document.getElementById("reverseBatchBtn");
   var undoBtn = document.getElementById("undoBtn");
+  var redoBtn = document.getElementById("redoBtn");
   var resetBtn = document.getElementById("resetBtn");
 
   var designerDrag = null;
   var undoStack = [];
+  var redoStack = [];
   // Track gallery drag state so preset cards can be reordered by drag & drop.
   var designerGalleryDragId = "";
   var designerGalleryClickSuppressUntil = 0;
@@ -1850,7 +1852,7 @@
       var parsed = parseHostResponse(result);
       appendHostDebug(parsed.hostDebug);
 
-      if (parsed.kind === "ok" && request.undoSnapshot && !request.undoSnapshotPushed) {
+      if (parsed.kind === "ok" && request.captureUndo && !request.undoSnapshotPushed) {
         request.undoSnapshotPushed = true;
         pushUndoSnapshot(request.undoSnapshot);
       }
@@ -1912,7 +1914,7 @@
   }
 
   function refreshTimelineActionButtons() {
-    // Disable destructive timeline actions while a host apply/reset/undo request is running.
+    // Disable timeline history and mutation actions while a host request is running.
     var busy = !!applyRequestState.inFlight;
     if (applyBatchBtn) {
       applyBatchBtn.disabled = busy;
@@ -1922,6 +1924,9 @@
     }
     if (undoBtn) {
       undoBtn.disabled = busy || undoStack.length < 1;
+    }
+    if (redoBtn) {
+      redoBtn.disabled = busy || redoStack.length < 1;
     }
     if (resetBtn) {
       resetBtn.disabled = busy;
@@ -1945,57 +1950,87 @@
     });
   }
 
-  function pushUndoSnapshot(snapshot) {
-    // Keep several undo levels for repeated plugin actions during the current panel session.
+  function pushHistorySnapshot(stack, snapshot, label) {
+    // Keep both history directions bounded during the current panel session.
     if (!snapshot || !snapshot.clips || !snapshot.clips.length) {
       return;
     }
-    undoStack.push(snapshot);
-    while (undoStack.length > UNDO_STACK_LIMIT) {
-      undoStack.shift();
+    stack.push(snapshot);
+    while (stack.length > UNDO_STACK_LIMIT) {
+      stack.shift();
     }
-    appendDebug("UI> undo stack size=" + undoStack.length);
+    appendDebug("UI> " + label + " stack size=" + stack.length);
     refreshTimelineActionButtons();
   }
 
-  function restoreUndoSnapshot(snapshot, onDone) {
-    // Restore a captured snapshot by asking the host to find the original timeline clips.
-    var script = "gridMaker_restoreClipsState(" + quoteForEvalScript(JSON.stringify(snapshot)) + ")";
-    appendDebug("UI> evalScript: gridMaker_restoreClipsState(<snapshot>)");
+  function pushUndoSnapshot(snapshot) {
+    // A new timeline mutation creates a new history branch and invalidates Redo.
+    if (redoStack.length) {
+      redoStack = [];
+      appendDebug("UI> redo stack cleared by new action");
+    }
+    pushHistorySnapshot(undoStack, snapshot, "undo");
+    refreshTimelineActionButtons();
+  }
+
+  function swapHistorySnapshot(snapshot, operation, onDone) {
+    // Capture current states and restore the target states atomically for reliable Undo/Redo.
+    var script = "gridMaker_swapClipsState(" + quoteForEvalScript(JSON.stringify(snapshot)) + ")";
+    appendDebug("UI> evalScript: gridMaker_swapClipsState(<snapshot>) operation=" + operation);
     callHost(script, function (result) {
-      appendDebug("HOST< raw(undo-restore): " + (result || "<empty>"));
-      var parsed = parseHostResponse(result);
-      appendHostDebug(parsed.hostDebug);
-      onDone(parsed);
+      appendDebug("HOST< raw(" + operation + "-swap): " + (result || "<empty>"));
+      var payload = parseJsonSafe(result);
+      appendHostDebug(payload && payload.debug ? payload.debug : "");
+      if (!payload || !payload.ok || !payload.clips || !payload.clips.length) {
+        var errorCode = payload && payload.code ? String(payload.code) : "";
+        var errorKey = errorCode && hasText("status.err." + errorCode)
+          ? ("status.err." + errorCode)
+          : ("status." + operation + "_failed");
+        onDone({ kind: "err", key: errorKey, vars: payload || {} });
+        return;
+      }
+      payload.label = snapshot.label || operation;
+      payload.capturedAt = Date.now();
+      onDone({ kind: "ok", snapshot: payload });
+    });
+  }
+
+  function restoreHistoryDirection(sourceStack, destinationStack, operation) {
+    // Move one state between Undo and Redo while preserving the inverse snapshot.
+    if (applyRequestState.inFlight) {
+      return;
+    }
+    if (!sourceStack.length) {
+      setStatusKey("status." + operation + "_empty", {}, "err");
+      refreshTimelineActionButtons();
+      return;
+    }
+
+    var snapshot = sourceStack.pop();
+    applyRequestState.inFlight = true;
+    refreshTimelineActionButtons();
+    setStatusKey("status." + operation + "_applying", {}, "");
+
+    swapHistorySnapshot(snapshot, operation, function (result) {
+      applyRequestState.inFlight = false;
+      if (result.kind !== "ok") {
+        sourceStack.push(snapshot);
+        setStatusKey(result.key || ("status." + operation + "_failed"), result.vars || {}, "err");
+        refreshTimelineActionButtons();
+        return;
+      }
+      pushHistorySnapshot(destinationStack, result.snapshot, operation === "undo" ? "redo" : "undo");
+      setStatusKey("status." + operation + "_applied", {}, "ok");
+      refreshTimelineActionButtons();
     });
   }
 
   function undoLastGridMakerAction() {
-    if (applyRequestState.inFlight) {
-      return;
-    }
-    if (!undoStack.length) {
-      setStatusKey("status.undo_empty", {}, "err");
-      refreshTimelineActionButtons();
-      return;
-    }
+    restoreHistoryDirection(undoStack, redoStack, "undo");
+  }
 
-    var snapshot = undoStack.pop();
-    applyRequestState.inFlight = true;
-    refreshTimelineActionButtons();
-    setStatusKey("status.undo_applying", {}, "");
-
-    restoreUndoSnapshot(snapshot, function (parsed) {
-      applyRequestState.inFlight = false;
-      if (parsed.kind !== "ok") {
-        undoStack.push(snapshot);
-        setStatusKey(parsed.key || "status.undo_failed", parsed.vars || {}, "err");
-        refreshTimelineActionButtons();
-        return;
-      }
-      setStatusKey("status.undo_applied", {}, "ok");
-      refreshTimelineActionButtons();
-    });
+  function redoLastGridMakerAction() {
+    restoreHistoryDirection(redoStack, undoStack, "redo");
   }
 
   function resetSelectedClips() {
@@ -4138,6 +4173,12 @@
   if (undoBtn) {
     undoBtn.addEventListener("click", function () {
       undoLastGridMakerAction();
+    });
+  }
+
+  if (redoBtn) {
+    redoBtn.addEventListener("click", function () {
+      redoLastGridMakerAction();
     });
   }
 

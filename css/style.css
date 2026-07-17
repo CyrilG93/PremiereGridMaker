@@ -87,6 +87,7 @@ h1 {
 #applyBatchBtn,
 #reverseBatchBtn,
 #undoBtn,
+#redoBtn,
 #resetBtn,
 .stepper-button,
 .designer-preview-tool,
@@ -111,6 +112,7 @@ h1 {
 #applyBatchBtn:hover,
 #reverseBatchBtn:hover,
 #undoBtn:hover,
+#redoBtn:hover,
 #resetBtn:hover,
 .stepper-button:hover,
 .designer-preview-tool:hover,
@@ -217,7 +219,7 @@ h1 {
 
 .timeline-actions {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto auto;
   gap: 6px;
   align-items: stretch;
 }

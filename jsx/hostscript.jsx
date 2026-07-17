@@ -1028,6 +1028,64 @@ function gridMaker_restoreClipsState(snapshotJson) {
     }
 }
 
+// Atomically swap captured clip states and return the previous states for the opposite history direction.
+function gridMaker_swapClipsState(snapshotJson) {
+    var debugLines = [];
+    function dbg(message) {
+        _gridMaker_debugPush(debugLines, message);
+    }
+
+    try {
+        dbg("INPUT swapClipsState");
+        app.enableQE();
+        var seq = app.project.activeSequence;
+        if (!seq) {
+            dbg("No active sequence");
+            return _gridMaker_jsonStringify({ ok: false, code: "no_active_sequence", debug: debugLines.join("\n"), clips: [] });
+        }
+
+        var snapshot = _gridMaker_jsonParse(String(snapshotJson || ""));
+        var clips = snapshot && snapshot.clips ? snapshot.clips : [];
+        if (!(clips instanceof Array) || clips.length < 1) {
+            dbg("Invalid history snapshot");
+            return _gridMaker_jsonStringify({ ok: false, code: "undo_empty", debug: debugLines.join("\n"), clips: [] });
+        }
+
+        var inverse = [];
+        var restored = 0;
+        var missing = 0;
+        var failed = 0;
+        for (var i = 0; i < clips.length; i++) {
+            var item = clips[i];
+            var clip = _gridMaker_findClipByReference(seq, item.ref, debugLines);
+            if (!clip) {
+                missing += 1;
+                dbg("History target missing index=" + i);
+                continue;
+            }
+
+            // Capture before restoring so the returned snapshot can reverse this exact operation.
+            var currentState = _gridMaker_captureClipState(seq, clip, debugLines);
+            if (_gridMaker_restoreClipState(seq, clip, item, debugLines)) {
+                inverse.push(currentState);
+                restored += 1;
+            } else {
+                failed += 1;
+                dbg("History target restore failed index=" + i);
+            }
+        }
+
+        dbg("History swap summary restored=" + restored + " failed=" + failed + " missing=" + missing + " total=" + clips.length);
+        if (restored < 1) {
+            return _gridMaker_jsonStringify({ ok: false, code: "undo_failed", restored: restored, failed: failed, missing: missing, debug: debugLines.join("\n"), clips: [] });
+        }
+        return _gridMaker_jsonStringify({ ok: true, code: "history_swapped", restored: restored, failed: failed, missing: missing, debug: debugLines.join("\n"), clips: inverse });
+    } catch (e) {
+        dbg("EXCEPTION " + e);
+        return _gridMaker_jsonStringify({ ok: false, code: "exception", message: String(e), debug: debugLines.join("\n"), clips: [] });
+    }
+}
+
 // Reset selected clips to full-frame Motion and default Grid Maker-managed Crop/Transform values.
 function gridMaker_resetSelectedClips() {
     var debugLines = [];
