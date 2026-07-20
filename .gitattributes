@@ -1,0 +1,2 @@
+# Keep macOS installers compatible with Bash when a release is built on Windows.
+*.sh text eol=lf

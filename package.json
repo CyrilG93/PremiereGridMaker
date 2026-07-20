@@ -4,6 +4,8 @@
   "private": true,
   "description": "Adobe Premiere Pro CEP panel to place clips in grid cells with Motion and Crop.",
   "scripts": {
-    "check": "echo No build step required"
+    "check": "echo No build step required",
+    "package:release": "node scripts/package-release.mjs",
+    "verify:release": "node scripts/verify-release.mjs"
   }
 }
