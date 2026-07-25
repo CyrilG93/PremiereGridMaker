@@ -9,7 +9,7 @@ const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const packageJson = JSON.parse(readFileSync(resolve(rootDir, "package.json"), "utf8"));
 const version = packageJson.version;
 const outputPath = resolve(rootDir, "Releases", `PremiereGridMaker-v${version}.zip`);
-const temporaryPath = `${outputPath}.tmp-${process.pid}`;
+const temporaryPath = `${outputPath}.tmp-${process.pid}.zip`;
 const releaseItems = ["CSXS", "css", "js", "jsx", "index.html", "README.md", "install-macos.sh", "install-win.bat", "package.json"];
 const macInstaller = readFileSync(resolve(rootDir, "install-macos.sh"));
 
@@ -18,8 +18,10 @@ if (macInstaller.includes(0x0d)) {
   throw new Error("install-macos.sh must use LF line endings.");
 }
 
-// Check the shell syntax before producing an archive users could download.
-execFileSync("bash", ["-n", "install-macos.sh"], { cwd: rootDir, stdio: "inherit" });
+// Validate Bash syntax on Unix hosts; Windows validates the shipped LF bytes below.
+if (process.platform !== "win32") {
+  execFileSync("bash", ["-n", "install-macos.sh"], { cwd: rootDir, stdio: "inherit" });
+}
 
 // Remove only this run's stale temporary archive before creating a replacement.
 if (existsSync(temporaryPath)) {
@@ -27,8 +29,12 @@ if (existsSync(temporaryPath)) {
 }
 
 try {
-  // Store relative paths and omit macOS metadata from the portable ZIP.
-  execFileSync("zip", ["-X", "-q", "-r", temporaryPath, ...releaseItems, "-x", "*.DS_Store", "__MACOSX/*"], { cwd: rootDir, stdio: "inherit" });
+  // Use the native Windows tar ZIP writer, or zip on Unix, to keep packaging dependency-free.
+  const archiveCommand = process.platform === "win32" ? "tar" : "zip";
+  const archiveArgs = process.platform === "win32"
+    ? ["-a", "-c", "-f", temporaryPath, ...releaseItems]
+    : ["-X", "-q", "-r", temporaryPath, ...releaseItems, "-x", "*.DS_Store", "__MACOSX/*"];
+  execFileSync(archiveCommand, archiveArgs, { cwd: rootDir, stdio: "inherit" });
 
   // Atomically replace the target only after ZIP creation completed successfully.
   renameSync(temporaryPath, outputPath);

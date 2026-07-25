@@ -1,4 +1,4 @@
-# Grid Maker - v1.6.2
+# Grid Maker - v1.6.5
 
 Premiere Pro 2025+ extension to place timeline clips into a video grid fast.
 
@@ -216,9 +216,12 @@ Then include it in `index.html` before `js/main.js`.
 
 ## Changelog
 
+### v1.6.5 - 2026-07-25
+
+- Fixed the macOS installer archive so Plugin Manager can launch it reliably.
+
 ### v1.6.2 - 2026-07-17
 
-- Fixed the macOS installer format so Plugin Manager can launch it correctly.
 - Added round minus and plus buttons for grid size, margin, and roundness controls.
 - Added a persistent Reverse toggle to apply batch cells from the highest selected video track downward.
 - Added multi-step Redo alongside Undo for restoring recently cancelled Grid Maker actions.

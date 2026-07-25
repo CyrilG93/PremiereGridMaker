@@ -1,19 +1,27 @@
 // Validate that a release ZIP is readable and keeps the macOS installer in LF format.
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 
-const archivePath = resolve(process.argv[2] || "Releases/PremiereGridMaker-v1.6.2.zip");
-const archiveEntries = execFileSync("unzip", ["-Z1", archivePath], { encoding: "utf8" }).split("\n");
-const macInstaller = execFileSync("unzip", ["-p", archivePath, "install-macos.sh"]);
+const packageJson = JSON.parse(readFileSync(resolve("package.json"), "utf8"));
+const archivePath = resolve(process.argv[2] || `Releases/PremiereGridMaker-v${packageJson.version}.zip`);
+const archiveCommand = process.platform === "win32" ? "tar" : "unzip";
+const archiveEntries = process.platform === "win32"
+  ? execFileSync(archiveCommand, ["-tf", archivePath], { encoding: "utf8" }).split("\n")
+  : execFileSync(archiveCommand, ["-Z1", archivePath], { encoding: "utf8" }).split("\n");
+const macInstaller = process.platform === "win32"
+  ? execFileSync(archiveCommand, ["-xOf", archivePath, "install-macos.sh"])
+  : execFileSync(archiveCommand, ["-p", archivePath, "install-macos.sh"]);
+const normalizedEntries = archiveEntries.map((entry) => entry.trim());
 
 // Require the installer because Plugin Manager invokes this exact file.
-if (!archiveEntries.includes("install-macos.sh")) {
+if (!normalizedEntries.includes("install-macos.sh")) {
   throw new Error("Release ZIP is missing install-macos.sh.");
 }
 
 // Reject Finder metadata so the archive stays portable and contains only release files.
-if (archiveEntries.some((entry) => entry.includes(".DS_Store") || entry.startsWith("__MACOSX/"))) {
+if (normalizedEntries.some((entry) => entry.includes(".DS_Store") || entry.startsWith("__MACOSX/"))) {
   throw new Error("Release ZIP contains macOS metadata files.");
 }
 
@@ -22,18 +30,22 @@ if (macInstaller.includes(0x0d)) {
   throw new Error("Archived install-macos.sh contains CRLF line endings.");
 }
 
-// Verify the complete archive and parse the installer with Bash.
-execFileSync("unzip", ["-t", archivePath], { stdio: "inherit" });
-const temporaryInstallerPath = resolve("/tmp", `premiere-grid-maker-install-${process.pid}.sh`);
+// Test the archive on every platform and parse the installer with Bash on Unix hosts.
+if (process.platform === "win32") {
+  execFileSync(archiveCommand, ["-tf", archivePath], { stdio: "inherit" });
+} else {
+  execFileSync(archiveCommand, ["-t", archivePath], { stdio: "inherit" });
+  const temporaryInstallerPath = resolve(tmpdir(), `premiere-grid-maker-install-${process.pid}.sh`);
 
-try {
-  // Write the archived script to a temporary path so Bash checks the shipped bytes.
-  writeFileSync(temporaryInstallerPath, macInstaller);
-  execFileSync("bash", ["-n", temporaryInstallerPath], { stdio: "inherit" });
-} finally {
-  // A failed syntax check can leave the temporary installer behind.
-  if (existsSync(temporaryInstallerPath)) {
-    rmSync(temporaryInstallerPath);
+  try {
+    // Write the archived script to a temporary path so Bash checks the shipped bytes.
+    writeFileSync(temporaryInstallerPath, macInstaller);
+    execFileSync("bash", ["-n", temporaryInstallerPath], { stdio: "inherit" });
+  } finally {
+    // A failed syntax check can leave the temporary installer behind.
+    if (existsSync(temporaryInstallerPath)) {
+      rmSync(temporaryInstallerPath);
+    }
   }
 }
 
