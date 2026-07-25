@@ -218,7 +218,6 @@ Then include it in `index.html` before `js/main.js`.
 
 ### v1.6.5 - 2026-07-25
 
-- Fixed the macOS installer archive so Plugin Manager can launch it reliably.
 - Added round minus and plus buttons for grid size, margin, and roundness controls.
 - Added a persistent Reverse toggle to apply batch cells from the highest selected video track downward.
 - Added a dedicated Redo button alongside multi-step Undo to restore recently cancelled Grid Maker actions.
