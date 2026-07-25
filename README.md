@@ -224,7 +224,7 @@ Then include it in `index.html` before `js/main.js`.
 
 - Added round minus and plus buttons for grid size, margin, and roundness controls.
 - Added a persistent Reverse toggle to apply batch cells from the highest selected video track downward.
-- Added multi-step Redo alongside Undo for restoring recently cancelled Grid Maker actions.
+- Added a dedicated Redo button alongside multi-step Undo to restore recently cancelled Grid Maker actions.
 
 ### v1.6.0 - 2026-07-16
 
